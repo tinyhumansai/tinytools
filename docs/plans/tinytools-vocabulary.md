@@ -87,11 +87,14 @@ sequence for the next module added to this crate.
 
 ## Task 6: Full verification
 
-- [ ] `cargo fmt --all -- --check`
-- [ ] `cargo clippy --all-targets --all-features -- -D warnings`
-- [ ] `cargo build --all-targets --all-features`
-- [ ] `cargo test --all-features`
-- [ ] `.github/scripts/check-file-coverage.sh 90 coverage.json` (≥ 90% per file)
-- [ ] `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features`
-- [ ] `cargo deny check all`
-- [ ] the dependency-light CI gate passes against the reviewed allowlist
+All items below were run and passed locally as of this commit, and CI
+re-verifies the same commands on every push:
+
+- [x] `cargo fmt --all -- --check`
+- [x] `cargo clippy --all-targets --all-features -- -D warnings`
+- [x] `cargo build --all-targets --all-features`
+- [x] `cargo test --all-features`
+- [x] `.github/scripts/check-file-coverage.sh 90 coverage.json` (≥ 90% per file)
+- [x] `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features`
+- [x] `cargo deny check all`
+- [x] the dependency-light CI gate passes against the reviewed allowlist

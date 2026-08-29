@@ -13,8 +13,16 @@ timeline. A host reads those declarations and decides what to allow — the
 trait never enforces policy on itself. See the crate's top-level `README.md`
 ("What is deliberately not here") for why that split exists.
 
-Every default is the conservative answer except `permission_level`, which
-defaults to `PermissionLevel::ReadOnly` because most tools genuinely read.
+Most defaults are the cautious answer — `scope` is `ToolScope::All`,
+`is_concurrency_safe` is `false`, `timeout_policy` inherits the host's bound.
+Three fail *open* instead, and are what to check for when reviewing a `Tool`
+impl: `external_effect` defaults to `false` (an effectful tool that doesn't
+override it is declaring it has none, and a host honouring that skips its
+approval gate), `max_result_size_chars` defaults to `None` (no cap), and
+`permission_level` defaults to `PermissionLevel::ReadOnly`, not `None`, because
+most tools genuinely read. See the `# The defaults are not uniformly safe, and
+two of them fail OPEN` section on the trait itself in `types.rs` for the full
+reasoning.
 
 ## Public surface
 

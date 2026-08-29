@@ -86,9 +86,13 @@ harness type that carries them. CI asserts the edge stays pointing one way.
 Beyond `name` / `description` / `parameters_schema` / `execute`, every method on
 `Tool` answers a question a host asks *before* it calls the tool: what privilege
 does this need, does it reach outside the machine, how long may it run, how
-should it read in a timeline. The defaults are the conservative answer in every
-case except `permission_level`, which defaults to `ReadOnly` because most tools
-genuinely read.
+should it read in a timeline. Most defaults are the cautious answer (`scope` is
+`All`, `is_concurrency_safe` is `false`, `timeout_policy` inherits the host's
+bound), but three fail *open* rather than closed and are what to check for when
+reviewing a `Tool` impl: `external_effect` defaults to `false` (an effectful
+tool that doesn't override it slips past a host's approval gate),
+`max_result_size_chars` defaults to `None` (no cap), and `permission_level`
+defaults to `ReadOnly`, not `None`, because most tools genuinely read.
 
 Two consequences worth knowing:
 

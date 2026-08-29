@@ -78,8 +78,11 @@ impl Tool for Echo {
 }
 ```
 
-That is a complete tool. Every other method on `Tool` defaults to the
-conservative answer.
+That is a complete tool. Most other methods on `Tool` default to the cautious
+answer, but `external_effect`, `max_result_size_chars`, and `permission_level`
+fail *open* rather than closed — see the "defaults are not uniformly safe"
+section on the trait itself in `crates/tinytools/src/tool/types.rs`, and
+`crates/tinytools/src/tool/README.md`.
 
 ## Invariants and constraints
 
@@ -108,8 +111,9 @@ conservative answer.
   (`.github/scripts/check-file-coverage.sh 90 coverage.json`).
 - `cargo doc --no-deps --all-features` and `cargo deny check all` pass.
 - The dependency-light CI gate passes against the reviewed allowlist.
-- `crates/tinytools/README.md` and this specification stay aligned with the
-  public surface as it evolves.
+- `README.md` (the repository root's, which is this crate's packaged
+  README — see `crates/tinytools/Cargo.toml`'s `readme` field) and this
+  specification stay aligned with the public surface as it evolves.
 
 ## Open questions
 

@@ -76,7 +76,7 @@ jobs:
           # does exactly that — so grepping the raw line matches the path and
           # reports a dependency that is not there. Cut the version and path off
           # first.
-          package_names="$(cargo tree -p tinytools -e normal,build --prefix none \
+          package_names="$(cargo tree -p tinytools --all-features -e normal,build --prefix none \
             | awk '{print $1}' | sort -u)"
 
           # An ALLOWLIST, not a blocklist: naming eight forbidden crates only
