@@ -78,6 +78,19 @@ fn scalars_and_string_arrays_render() {
 }
 
 #[test]
+fn blank_array_elements_do_not_survive_as_bare_punctuation() {
+    // An array of only empty/whitespace strings must not render as a
+    // detail at all: joining survivors with ", " and then collapsing
+    // whitespace used to leave a bare "," for input like ["", "  "].
+    assert_eq!(context_detail_from_args(&json!({ "to": ["", "  "] })), None);
+    // A mix of blank and real entries keeps only the real ones.
+    assert_eq!(
+        context_detail_from_args(&json!({ "to": ["", "a@x.com", "  "] })).as_deref(),
+        Some("a@x.com")
+    );
+}
+
+#[test]
 fn whitespace_is_collapsed() {
     assert_eq!(
         context_detail_from_args(&json!({ "command": "  ls   -la  " })).as_deref(),

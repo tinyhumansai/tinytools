@@ -78,29 +78,45 @@ jobs:
           # first.
           package_names="$(cargo tree -p tinytools -e normal,build --prefix none \
             | awk '{print $1}' | sort -u)"
-          # `grep -E` exits 1 on "no match", which is the success case here, so
-          # it cannot share a `set -e` pipeline with the commands that produced
-          # its input: that would abort the script on the very outcome we want.
-          # Capture its exit status explicitly and only tolerate exactly 1;
-          # anything else (a real grep failure, or a non-1 pipeline failure from
-          # cargo tree/awk/sort surfaced through `pipefail`) still fails the job.
-          forbidden=""
-          set +e
-          forbidden="$(printf '%s\n' "$package_names" \
-            | grep -Exi 'tinyagents|tinybus|tokio|reqwest|ureq|hyper|rusqlite|git2')"
-          grep_status=$?
-          set -e
-          if [ "$grep_status" -ne 0 ] && [ "$grep_status" -ne 1 ]; then
-            echo "dependency scan failed (grep exit $grep_status)" >&2
-            exit "$grep_status"
-          fi
+
+          # An ALLOWLIST, not a blocklist: naming eight forbidden crates only
+          # catches those eight. Adding `surf`, `async-std`, an arbitrary
+          # `*-sys` native binding, or any other transport/runtime would pass
+          # silently under a blocklist. Every package this crate's forward tree
+          # is reviewed to actually contain is named here instead, so *any*
+          # newly introduced package — forbidden or merely unreviewed — fails
+          # the gate until this list is updated in the same commit.
+          allowed='
+          tinytools
+          anyhow
+          async-trait
+          serde
+          serde_core
+          serde_derive
+          serde_json
+          proc-macro2
+          quote
+          syn
+          unicode-ident
+          itoa
+          memchr
+          zmij
+          '
+
+          # Anything in package_names that is not a line of $allowed.
+          forbidden="$(comm -23 \
+            <(printf '%s\n' "$package_names") \
+            <(printf '%s\n' "$allowed" | sort -u))"
+
           if [ -n "$forbidden" ]; then
-            echo "tinytools pulled in a dependency its manifest forbids:" >&2
+            echo "tinytools pulled in a dependency its manifest doesn't review for:" >&2
             echo "$forbidden" >&2
             echo >&2
             echo "This crate is what a harness and a host both compile against." >&2
             echo "It must stay free of agent harnesses, transports, async" >&2
-            echo "runtimes, HTTP clients and native libraries." >&2
+            echo "runtimes, HTTP clients and native libraries. If this package" >&2
+            echo "is a genuinely reviewed addition, add it to the allowlist in" >&2
+            echo "this step in the same commit that adds the dependency." >&2
             exit 1
           fi
 

@@ -21,13 +21,7 @@ CI also requires at least 90% line coverage in every source file. After
 installing `cargo-llvm-cov`, run the same gate locally:
 
 ```sh
-.github/scripts/check-file-coverage.sh 90 target/coverage.json
-```
-
-The bundled example should also run:
-
-```sh
-cargo run --example basic
+.github/scripts/check-file-coverage.sh 90 coverage.json
 ```
 
 ## Making A Change
@@ -37,8 +31,11 @@ cargo run --example basic
 2. Put each feature area in its own module directory: `mod.rs` for the module
    root and public surface, `types.rs` for substantial types, `test.rs` for
    module-local unit tests. Integration tests belong in `tests/`.
-3. Add a specific variant to the crate error type rather than encoding new
-   failure context into a message string.
+3. This crate deliberately defines no error type of its own — `Tool::execute`
+   returns `anyhow::Result` because a tool body calls arbitrary host code and
+   has no useful closed error set to name. Prefer `anyhow::Context` for
+   failure messages rather than a new error type; a tool that ran and decided
+   no returns `Ok(ToolResult::error(..))` instead of an `Err`.
 4. Add or update tests with every behavior change, covering the failure paths.
 5. Document public items, including `# Errors` and `# Panics` sections.
 6. Update `README.md` and `docs/` in the same commit when behavior, the public

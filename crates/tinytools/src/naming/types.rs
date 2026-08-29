@@ -141,6 +141,8 @@ fn render_context_value(value: &Value, options: ContextDetailOptions) -> Option<
         Value::Array(items) => items
             .iter()
             .filter_map(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
             .collect::<Vec<_>>()
             .join(", "),
         Value::Null | Value::Object(_) => String::new(),
