@@ -12,7 +12,7 @@
 //! and nothing catches it.
 //!
 //! So the vocabulary sits underneath both. A harness depends on this crate and
-//! re-exports it, so `harness::ToolResult` and [`tinytools::ToolResult`] are the
+//! re-exports it, so `harness::ToolResult` and [`ToolResult`] are the
 //! *same type*, not structural twins. A tool author depends on this crate alone
 //! and compiles neither the harness nor the host.
 //!

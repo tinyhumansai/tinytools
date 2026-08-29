@@ -70,8 +70,15 @@ jobs:
       - name: Assert the vocabulary crate stays dependency-light
         run: |
           set -euo pipefail
+          # Compare crate NAMES only. `cargo tree` prints each package as
+          # `name vX.Y.Z (/path/to/checkout)`, and a consumer may vendor this
+          # repository *underneath* one of the forbidden crates — tinyagents
+          # does exactly that — so grepping the raw line matches the path and
+          # reports a dependency that is not there. Cut the version and path off
+          # first.
           forbidden="$(cargo tree -p tinytools -e normal,build --prefix none \
-            | grep -Ei 'tinyagents|tinybus|tokio|reqwest|ureq|hyper|rusqlite|git2' || true)"
+            | awk '{print $1}' | sort -u \
+            | grep -Exi 'tinyagents|tinybus|tokio|reqwest|ureq|hyper|rusqlite|git2' || true)"
           if [ -n "$forbidden" ]; then
             echo "tinytools pulled in a dependency its manifest forbids:" >&2
             echo "$forbidden" >&2
