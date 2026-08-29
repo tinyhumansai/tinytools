@@ -1,7 +1,7 @@
 //! The run-scoped facts a tool may read, without naming the harness that owns
 //! them.
 
-use std::path::Path;
+use crate::workspace::WorkspaceDescriptor;
 
 /// The parts of a live agent run a tool is allowed to see.
 ///
@@ -16,26 +16,22 @@ use std::path::Path;
 /// harness — and the harness depends on *this* crate, for the vocabulary every
 /// tool is written against. Erasing the context behind a trait keeps that edge
 /// pointing one way: the harness implements this for its own context type, and
-/// a tool reads the three facts it actually uses without either crate having to
-/// know the other's shape.
+/// a tool reads the facts it actually uses without either crate having to know
+/// the other's shape.
 ///
-/// It is deliberately narrow. Widening it means a tool has grown a dependency
-/// on run internals, which is worth noticing rather than accommodating.
+/// It is deliberately narrow. The run id, event sink, cancellation token and
+/// streaming flag are all absent, because a tool that wanted them would be
+/// reaching into the run rather than doing its job. Widening this trait is
+/// worth noticing rather than accommodating.
 pub trait ToolRunContext: Send + Sync {
-    /// Root of the isolated workspace this call may operate in, when the run
-    /// was configured with one.
+    /// The isolated workspace this call may operate in, when the run was
+    /// configured with one.
     ///
     /// `None` means no workspace policy is in effect and the tool should fall
-    /// back to whatever root its host configured. A tool must not treat `None`
+    /// back to whatever root its host configured. A tool must not read `None`
     /// as permission to escape a root — the host's own path policy is what
     /// enforces that, and it applies either way.
-    fn workspace_root(&self) -> Option<&Path> {
-        None
-    }
-
-    /// Identifier of the policy that granted [`Self::workspace_root`], for
-    /// logging and audit. `None` when there is no workspace.
-    fn workspace_policy_id(&self) -> Option<&str> {
+    fn workspace(&self) -> Option<&WorkspaceDescriptor> {
         None
     }
 
@@ -50,5 +46,19 @@ pub trait ToolRunContext: Send + Sync {
     /// to stay inside the caller's budget instead of picking its own.
     fn max_turn_output_tokens(&self) -> Option<u32> {
         None
+    }
+
+    /// Root of the isolated workspace, when there is one.
+    ///
+    /// A convenience over [`Self::workspace`] for the common case: most tools
+    /// want the root and nothing else. Not intended to be overridden.
+    fn workspace_root(&self) -> Option<&std::path::Path> {
+        self.workspace().map(|w| w.root.as_path())
+    }
+
+    /// Identifier of the policy that granted the workspace, for logging and
+    /// audit.
+    fn workspace_policy_id(&self) -> Option<&str> {
+        self.workspace().map(|w| w.policy_id.as_str())
     }
 }

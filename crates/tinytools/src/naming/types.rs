@@ -11,7 +11,6 @@ use serde_json::Value;
 /// re-implement the whole function to change one character is how two copies of
 /// it end up in a codebase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 pub struct ContextDetailOptions {
     /// Maximum rendered length, in characters, including the ellipsis.
     pub max_chars: usize,

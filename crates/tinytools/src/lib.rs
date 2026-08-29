@@ -28,6 +28,7 @@
 //! - [`call`] — [`ToolCallOptions`] and [`ToolTimeout`], the per-invocation
 //!   inputs that are not arguments.
 //! - [`context`] — [`ToolRunContext`], the narrow seam onto a live run.
+//! - [`workspace`] — [`WorkspaceDescriptor`], the root a tool may touch.
 //! - [`naming`] — rendering a call for a human.
 //!
 //! # What is deliberately not here
@@ -103,6 +104,7 @@ pub mod permission;
 pub mod result;
 pub mod spec;
 pub mod tool;
+pub mod workspace;
 
 pub use call::{ToolCallOptions, ToolTimeout};
 pub use classification::{ToolCategory, ToolScope};
@@ -115,3 +117,4 @@ pub use permission::PermissionLevel;
 pub use result::{ToolContent, ToolResult};
 pub use spec::ToolSpec;
 pub use tool::Tool;
+pub use workspace::{SandboxMode, WorkspaceDescriptor};

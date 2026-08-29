@@ -6,7 +6,6 @@
 /// polluting the tool's model-visible parameter schema — the model never sees
 /// these, and never has to be told not to set them.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[non_exhaustive]
 pub struct ToolCallOptions {
     /// The caller prefers a markdown rendering of the result, because markdown
     /// is materially cheaper than JSON in model context.
