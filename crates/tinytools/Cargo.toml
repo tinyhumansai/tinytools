@@ -1,0 +1,31 @@
+[package]
+name = "tinytools"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The agent tool vocabulary: the `Tool` trait, its result and spec types, and the permission, scope and timeout classifications a host enforces around a call."
+documentation = "https://docs.rs/tinytools"
+readme = "README.md"
+keywords = ["llm", "agents", "tools", "tool-calling"]
+categories = ["asynchronous", "api-bindings"]
+
+# Deliberately dependency-light. This crate is the vocabulary two other crates
+# and every tool author link against, so it must cost them almost nothing.
+# Nothing here may pull in an HTTP client, an agent harness, a native library,
+# or a runtime beyond the executor-agnostic `async-trait` shim. In particular it
+# must never depend on `tinyagents`: `tinyagents` depends on *this* crate, and
+# the whole point of the `context` module's erasure trait is to keep that edge
+# pointing one way. CI asserts the dependency list.
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true

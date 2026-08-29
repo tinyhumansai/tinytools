@@ -1,156 +1,106 @@
-# Rust Template
+# TinyTools
 
-A production-ready Rust 2024 TinyBus module template used by TinyHumans AI. It
-ships the workspace layout, TinyBus ABI adapter, error handling, testing,
-documentation, CI, and multi-platform release workflow that every new
-integration in this organization starts from.
+The vocabulary an agent tool is written against: the `Tool` trait, the
+`ToolResult` it returns, and the classifications a host enforces around a call.
 
-It is a two-crate cargo workspace. `crates/template-bus` is the wire contract —
-member names, payload types, and the contract version, with no transport and no
-behavior — and `crates/template` is the implementation, built as both an `rlib`
-and the `cdylib` TinyBus loads. A host that only makes calls depends on the
-contract crate alone and compiles neither the module nor `tinybus` itself.
+```rust
+use tinytools::{Tool, ToolResult};
 
-## Use This Template
+struct Echo;
 
-Choose **Use this template** on GitHub, create a repository, then work through
-the checklist at the top of [`AGENTS.md`](AGENTS.md):
-
-- rename the `crates/template` and `crates/template-bus` directories and the
-  `name` fields in their manifests, and set the shared `description`,
-  `repository`, `keywords`, and `categories`;
-- update this README and the crate documentation in `crates/template/src/lib.rs`;
-- replace the placeholder `greeting` module with the first real feature area, in
-  both crates: the payload types in the contract, the behavior in the module;
-- rename the TinyBus interface, object path, and member constants in
-  `crates/template-bus/src/names/`, and the matching `provides` / `methods`
-  declarations in `crates/template/src/tinybus_module/`;
-- update the security contact and repository links in the community files;
-- replace `ROADMAP.md` with the real plan, or delete it;
-- change the license if GPL-3.0-only is not appropriate.
-
-Search for `template` and `template_bus` to find every remaining
-template-specific value.
-
-## What You Get
-
-| Area | What is configured |
-| --- | --- |
-| Layout | A cargo workspace under `crates/`, split into a dependency-light wire contract and the module that implements it; directory modules with `mod.rs` / `types.rs` / `test.rs`, a crate-wide error type, integration tests, and a runnable example |
-| Lints | `unsafe_code` forbidden, `missing_docs`, clippy `all` + `pedantic`, no `unwrap`/`expect`/`panic`/`todo` in library code — all declared once in `[workspace.lints]` so every crate, local run, and CI run agree |
-| CI | Format, clippy, build, test (default and all features), a run of the bundled example, an assertion that the contract crate stays transport-free, at least 90% line coverage in every source file, rustdoc with `-D warnings`, an MSRV build, and a `cargo-deny` supply-chain check |
-| Release | Manual `workflow_dispatch` bump that validates, versions, tags, and creates installable native module packages for every supported platform |
-| Community | Issue and pull request templates, Dependabot, contributing, security, support, and code of conduct docs |
-| Agents | [`AGENTS.md`](AGENTS.md) as the single source of truth, symlinked as `CLAUDE.md`, plus a `.claude/settings.json` allowlist for the standard commands |
-| Vendor | TinyBus host types and module SDK pinned as the `vendor/tinybus` build-time submodule |
-
-## Layout
-
-```text
-Cargo.toml              # virtual workspace: members, shared metadata, lints
-crates/
-├── template-bus/       # the wire contract — what crosses the bus
-│   ├── README.md       # why the contract is its own crate
-│   └── src/
-│       ├── lib.rs      # crate docs + the entire public re-export surface
-│       ├── names/      # interface, object path, one constant per member
-│       ├── greeting/   # payload types, one directory per family
-│       │   ├── mod.rs
-│       │   ├── types.rs
-│       │   └── test.rs
-│       └── version/    # contract version and the host bind rule
-└── template/           # the module — behavior, adapter, and the cdylib
-    ├── src/
-    │   ├── lib.rs      # crate docs + public surface, re-exporting the contract
-    │   ├── error/      # crate-wide `Error` and `Result<T>`
-    │   ├── greeting/   # one directory per feature area
-    │   └── tinybus_module/   # bus interface, setup, and ABI v1 exports
-    ├── tests/
-    │   └── public_api.rs     # integration tests against the public API only
-    └── examples/
-        ├── basic.rs                  # ordinary library API usage
-        ├── verify_module.rs          # local dynamic-module verification
-        └── verify_github_release.rs  # tagged-release download and bus call
-vendor/
-└── tinybus/            # pinned TinyBus git submodule
-docs/
-├── README.md           # documentation index and conventions
-├── specs/              # behavior and architecture specifications
-├── plans/              # implementation-ordered delivery plans
-└── adr/                # immutable architecture decision records
+#[async_trait::async_trait]
+impl Tool for Echo {
+    fn name(&self) -> &str { "echo" }
+    fn description(&self) -> &str { "Returns its input unchanged." }
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": { "text": { "type": "string" } },
+            "required": ["text"],
+        })
+    }
+    async fn execute(&self, args: serde_json::Value) -> anyhow::Result<ToolResult> {
+        Ok(ToolResult::success(args["text"].as_str().unwrap_or_default()))
+    }
+}
 ```
 
-The split is the point. A payload type describes what a frame carries; the
-behavior that answers it is a different obligation. `template` depends on
-`template-bus` and re-exports all of it, so `template::GreetRequest` and
-`template_bus::GreetRequest` are the *same* type rather than structural twins,
-and a host is never forced to choose between linking the whole module and
-redefining the vocabulary. See
-[`crates/template-bus/README.md`](crates/template-bus/README.md).
+That is a complete tool. Everything else in the trait has a default.
 
-Within each crate, feature areas use directory modules: implementation and
-exports live in `mod.rs`, substantial types move to `types.rs`, and unit tests
-live in `test.rs`. [`AGENTS.md`](AGENTS.md) holds the complete repository
-guidance, and `CLAUDE.md` is a symlink to it so every coding agent reads one
-source of truth.
+## Why this is its own crate
+
+Two crates need these types and neither can own them. An agent harness has to
+name a tool's result to run a loop over it; a host application has to name the
+same result to implement one. When both declare their own, the conversions
+between them get written by hand at every seam — which is how an error flag ends
+up inverted in one direction with nothing to catch it.
+
+So the vocabulary sits underneath both. A harness depends on this crate and
+re-exports it, so `harness::ToolResult` and `tinytools::ToolResult` are the
+*same type*, not structural twins. A tool author depends on this crate alone and
+compiles neither the harness nor the host.
+
+## What is here
+
+| Module | Holds |
+| --- | --- |
+| `tool` | `Tool` — four required methods, and defaulted declarations describing what the tool needs and touches |
+| `result` | `ToolResult`, `ToolContent` — the MCP-shaped block list a tool hands back |
+| `spec` | `ToolSpec` — the declaration a model is shown |
+| `permission` | `PermissionLevel` — the privilege ladder, ordered `None` → `Dangerous` |
+| `classification` | `ToolScope`, `ToolCategory` — where a tool may run, and which belt it is on |
+| `call` | `ToolCallOptions`, `ToolTimeout` — per-invocation inputs that are not arguments |
+| `context` | `ToolRunContext` — the narrow seam onto a live run |
+| `naming` | `humanize_tool_name`, `context_detail_from_args` — rendering a call for a human |
+
+## What is deliberately not here
+
+**No enforcement.** Nothing in this crate checks a `PermissionLevel`, applies a
+`ToolTimeout`, or decides whether an `external_effect` needs approval. A tool
+*describes* itself and a host *decides*, because the decision depends on that
+host's threat model, its configuration, and who is asking — none of which
+generalize. Putting the check here would mean every host inherits one host's
+policy.
+
+**No registry, no dispatch, no execution loop.** Those belong to whoever owns
+the run.
+
+**No dependency on an agent harness.** The harness depends on this crate.
+`ToolRunContext` exists precisely so a tool can read run-scoped facts — the
+isolated-workspace root being the common one — without this crate naming the
+harness type that carries them. CI asserts the edge stays pointing one way.
+
+## The trait is a declaration, not an enforcement point
+
+Beyond `name` / `description` / `parameters_schema` / `execute`, every method on
+`Tool` answers a question a host asks *before* it calls the tool: what privilege
+does this need, does it reach outside the machine, how long may it run, how
+should it read in a timeline. The defaults are the conservative answer in every
+case except `permission_level`, which defaults to `ReadOnly` because most tools
+genuinely read.
+
+Two consequences worth knowing:
+
+- **A tool that exposes several actions should declare the *minimum* privilege
+  any of them needs** from `permission_level`, and the exact one from
+  `permission_level_with_args`. Declaring the maximum statically blocks the tool
+  for callers that could legitimately run its read-only half.
+- **The argument-aware variants are the ones a host calls** at the enforcement
+  point. Overriding only `external_effect` on a tool whose classification
+  depends on its arguments leaves the per-call case unhandled.
 
 ## Development
 
-Clone with submodules, or initialize them before building:
-
-```sh
-git submodule update --init --recursive
-```
-
-```sh
-cargo fmt --all -- --check
+```bash
+cargo test
 cargo clippy --all-targets --all-features -- -D warnings
-cargo build --all-targets --all-features
-cargo test --all-features
-cargo run -p template --example basic
-cargo build -p template --release --lib   # produces the installable cdylib
+cargo fmt --all
 ```
 
-Those four checks are exactly what CI runs. Optional extras:
-
-```sh
-cargo doc --no-deps --all-features   # CI builds this with RUSTDOCFLAGS="-D warnings"
-cargo deny check all                 # supply-chain check; see deny.toml
-cargo install cargo-llvm-cov         # once, before running the coverage gate
-.github/scripts/check-file-coverage.sh 90 coverage.json
-```
-
-## Releasing
-
-Run the **Release** workflow from the Actions tab with a `patch`, `minor`, or
-`major` bump. Use `current` only to resume an interrupted release whose version
-commit and tag already exist. The workflow revalidates the workspace, versions
-and tags it — one `[workspace.package]` version that every member inherits —
-builds `crates/template` as a TinyBus `cdylib`, and creates a GitHub release.
-Assets follow `template-<version>-<platform>.<tar.gz|zip>` and contain the
-native module, its SHA-256 `modules.toml`, license, and
-[`MODULE.md`](MODULE.md). Every release also publishes `checksum.toml`, which
-TinyBus uses to verify an archive before extraction. The workflow loads the
-published Ubuntu archive through TinyBus's GitHub release API and calls its
-`Greet` method before declaring the release successful. TinyBus itself is not
-shipped by this repository; the pinned submodule is the build-time SDK. The stable native
-matrix covers Ubuntu 22.04 and 24.04 on x86_64 and ARM64; Fedora 43 and 44 on
-x86_64 and ARM64; rolling Arch Linux on its officially supported x86_64
-architecture; macOS 15 and 26 on Intel and Apple Silicon; Windows Server 2022
-and 2025 on x86_64; and Windows 11 on ARM64. Preview, deprecated, and unofficial
-architecture images are not release gates. Do not hand-edit the version in the
-root `Cargo.toml`.
-
-## Documentation
-
-- [`AGENTS.md`](AGENTS.md) — repository guidelines for humans and agents
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to propose a change
-- [`docs/specs/`](docs/specs/README.md) — behavior and architecture specs
-- [`docs/plans/`](docs/plans/README.md) — test-first implementation plans
-- [`docs/adr/`](docs/adr/0001-record-architecture-decisions.md) — architecture
-  decision records
-- [`SECURITY.md`](SECURITY.md) — how to report a vulnerability
+Lint levels live in `[workspace.lints]` so local and CI runs agree. Library code
+may not `unwrap`, `expect`, or `panic`; test modules opt out at the top of the
+file.
 
 ## License
 
-GPL-3.0-only. See [LICENSE](LICENSE).
+GPL-3.0-only. See [`LICENSE`](LICENSE).
