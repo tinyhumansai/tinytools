@@ -23,10 +23,31 @@ use crate::spec::ToolSpec;
 /// timeline. A host reads those declarations and decides what to allow.
 ///
 /// That split is the point. A tool never enforces policy on itself — it
-/// describes itself accurately and the host enforces. Which is why the
-/// declarations are cheap to override and the defaults are the conservative
-/// answer in every case except [`Self::permission_level`], where the default is
-/// [`PermissionLevel::ReadOnly`] because most tools genuinely read.
+/// describes itself accurately and the host enforces.
+///
+/// # The defaults are not uniformly safe, and two of them fail OPEN
+///
+/// Most defaults are the cautious answer — [`Self::scope`] is `All`,
+/// [`Self::is_concurrency_safe`] is `false`, [`Self::timeout_policy`] inherits
+/// the host's bound. Three are not, and a tool author who assumes otherwise
+/// ships a hole:
+///
+/// - **[`Self::external_effect`] defaults to `false`.** A tool that sends an
+///   email, posts a message or fires a webhook and does *not* override it is
+///   declaring that it has no outside effect, and a host honouring that
+///   declaration will route it **past** its approval gate. This default exists
+///   because most tools genuinely are local and the alternative would prompt on
+///   every file read — but it means **an effectful tool MUST override it**.
+///   There is no way for this crate to detect the omission: a missing override
+///   and an honest `false` are the same bytes.
+/// - **[`Self::max_result_size_chars`] defaults to `None`**, meaning no cap. A
+///   chatty tool takes the host's global handling, if it has any.
+/// - **[`Self::permission_level`] defaults to
+///   [`PermissionLevel::ReadOnly`]**, not [`PermissionLevel::None`], because
+///   most tools genuinely read — but a writing tool must say so.
+///
+/// If you are reviewing a `Tool` impl, those three are what to check for
+/// absence. The rest are safe to leave alone.
 #[async_trait]
 pub trait Tool: Send + Sync {
     /// Canonical tool name, used in model function calling.
@@ -144,6 +165,11 @@ pub trait Tool: Send + Sync {
     /// A host routes such calls through its approval gate before
     /// [`Self::execute`] runs. Local file writes and memory writes stay `false`
     /// — they are reversible inside the user's own machine.
+    ///
+    /// **This default fails open.** `false` means "no approval needed", so a
+    /// tool that reaches outside the machine and forgets to override this is
+    /// silently exempted from the gate. Overriding it is the tool author's
+    /// responsibility; nothing here can infer it.
     fn external_effect(&self) -> bool {
         false
     }
