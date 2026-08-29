@@ -20,7 +20,8 @@ impl Tool for Echo {
         })
     }
     async fn execute(&self, args: serde_json::Value) -> anyhow::Result<ToolResult> {
-        Ok(ToolResult::success(args["text"].as_str().unwrap_or_default()))
+        let text = args.get("text").and_then(|v| v.as_str()).unwrap_or("");
+        Ok(ToolResult::success(text))
     }
 }
 ```

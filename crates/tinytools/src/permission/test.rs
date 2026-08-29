@@ -40,3 +40,26 @@ fn levels_round_trip_through_json() {
         assert_eq!(back, level);
     }
 }
+
+#[test]
+fn levels_are_pinned_to_their_exact_wire_names() {
+    // A round-trip alone only proves the encoder and decoder currently agree
+    // with *each other* — it still passes if a `serde` rename quietly changes
+    // what gets persisted. Pin the literal strings, in both directions, so a
+    // rename that would silently corrupt an on-disk transcript or an RPC
+    // payload already carrying `"ReadOnly"` fails here instead.
+    let cases = [
+        (PermissionLevel::None, "\"None\""),
+        (PermissionLevel::ReadOnly, "\"ReadOnly\""),
+        (PermissionLevel::Write, "\"Write\""),
+        (PermissionLevel::Execute, "\"Execute\""),
+        (PermissionLevel::Dangerous, "\"Dangerous\""),
+    ];
+    for (level, wire) in cases {
+        assert_eq!(serde_json::to_string(&level).expect("serializable"), wire);
+        assert_eq!(
+            serde_json::from_str::<PermissionLevel>(wire).expect("deserializable"),
+            level
+        );
+    }
+}

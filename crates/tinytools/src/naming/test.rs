@@ -115,6 +115,18 @@ fn an_ellipsis_longer_than_the_cap_cannot_overflow_it() {
 }
 
 #[test]
+fn a_zero_cap_yields_no_detail_rather_than_a_blank_one() {
+    // A degenerate `max_chars` of 0 truncates a genuinely present value down to
+    // nothing; that must read as "no detail", not as "a detail, and it's
+    // empty" (`Some("")`), which a caller could render as a hollow decoration.
+    let detail = context_detail_from_args_with(
+        &json!({ "query": "hello" }),
+        ContextDetailOptions::new(0, "..."),
+    );
+    assert_eq!(detail, None);
+}
+
+#[test]
 fn the_default_options_are_eighty_chars_and_three_dots() {
     let defaults = ContextDetailOptions::default();
     assert_eq!(defaults.max_chars, 80);

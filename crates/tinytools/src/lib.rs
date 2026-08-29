@@ -75,7 +75,7 @@
 //!     }
 //!
 //!     async fn execute(&self, args: serde_json::Value) -> anyhow::Result<ToolResult> {
-//!         let text = args["text"].as_str().unwrap_or_default();
+//!         let text = args.get("text").and_then(|v| v.as_str()).unwrap_or("");
 //!         Ok(ToolResult::success(text))
 //!     }
 //! }

@@ -149,7 +149,7 @@ fn render_context_value(value: &Value, options: ContextDetailOptions) -> Option<
     if raw.is_empty() {
         return None;
     }
-    if raw.chars().count() > options.max_chars {
+    let rendered = if raw.chars().count() > options.max_chars {
         // Clamp the ellipsis itself to `max_chars` first: an ellipsis longer
         // than the cap (a misconfigured caller) would otherwise survive
         // `saturating_sub`'s zero and still be appended in full, pushing the
@@ -157,8 +157,19 @@ fn render_context_value(value: &Value, options: ContextDetailOptions) -> Option<
         let ellipsis: String = options.ellipsis.chars().take(options.max_chars).collect();
         let keep = options.max_chars.saturating_sub(ellipsis.chars().count());
         let truncated: String = raw.chars().take(keep).collect();
-        Some(format!("{truncated}{ellipsis}"))
+        format!("{truncated}{ellipsis}")
     } else {
-        Some(raw)
+        raw
+    };
+
+    // A zero (or otherwise degenerate) `max_chars` can truncate a genuinely
+    // present, nonempty value down to nothing. Callers distinguish `None` (no
+    // detail to show) from `Some(String)` (a detail to render), so surfacing
+    // `Some("")` here would read as "there is a detail, and it's blank" rather
+    // than "there is no detail" — treat an empty render the same as absence.
+    if rendered.is_empty() {
+        None
+    } else {
+        Some(rendered)
     }
 }
