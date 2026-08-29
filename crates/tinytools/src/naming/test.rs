@@ -1,3 +1,7 @@
+//! Unit tests for `humanize_tool_name` and `context_detail_from_args`: the
+//! prefix-stripping and title-casing rules, and the key-scanning, trimming,
+//! and empty-value handling that produce a rendered detail.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use serde_json::json;

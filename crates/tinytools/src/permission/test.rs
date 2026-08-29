@@ -1,3 +1,6 @@
+//! Unit tests for `PermissionLevel`: its total order, default, `Display`
+//! form, and the exact wire representation each variant is pinned to.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::PermissionLevel;

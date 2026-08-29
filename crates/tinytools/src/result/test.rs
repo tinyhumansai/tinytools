@@ -1,3 +1,6 @@
+//! Unit tests for `ToolResult` and `ToolContent`: constructing successes
+//! and errors, rendering content for a model, and the JSON wire shape.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use serde_json::json;
@@ -69,6 +72,31 @@ fn result_round_trips_through_json() {
     let back: ToolResult = serde_json::from_str(&encoded).expect("deserializable");
     assert!(!back.is_error);
     assert_eq!(back.text(), "hello");
+}
+
+#[test]
+fn result_is_pinned_to_its_literal_wire_shape() {
+    // Same reasoning as the permission and spec pinning tests: a round-trip
+    // alone doesn't catch a silent field rename, since the same serializer and
+    // deserializer that changed still agree with each other. Assert the exact
+    // JSON a persisted transcript or RPC reply would carry, in both
+    // directions.
+    let r = ToolResult::success_with_markdown(json!({"a": 1}), "**a**: 1");
+    let encoded: serde_json::Value = serde_json::to_value(&r).expect("serializable");
+    assert_eq!(
+        encoded,
+        json!({
+            "content": [{ "type": "json", "data": { "a": 1 } }],
+            "is_error": false,
+            "markdownFormatted": "**a**: 1",
+        })
+    );
+
+    let literal = r#"{"content":[{"type":"text","text":"hi"}],"is_error":true}"#;
+    let decoded: ToolResult = serde_json::from_str(literal).expect("deserializable");
+    assert!(decoded.is_error);
+    assert_eq!(decoded.text(), "hi");
+    assert_eq!(decoded.markdown_formatted, None);
 }
 
 #[test]

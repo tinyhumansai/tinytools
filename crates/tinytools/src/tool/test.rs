@@ -1,3 +1,7 @@
+//! Unit tests for the `Tool` trait: its defaults, how a host recovers tool
+//! metadata through the erased trait object, and how display helpers pull
+//! context out of a call's arguments.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![allow(clippy::unnecessary_literal_bound)]
 

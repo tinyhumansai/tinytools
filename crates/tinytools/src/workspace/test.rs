@@ -1,3 +1,6 @@
+//! Unit tests for `WorkspaceDescriptor` and `SandboxMode`: the builders,
+//! the JSON wire shape, and the lexical containment checks in `allows`.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::path::{Path, PathBuf};
@@ -69,6 +72,40 @@ fn the_descriptor_round_trips_through_json() {
     let encoded = serde_json::to_string(&ws).expect("serializable");
     let back: WorkspaceDescriptor = serde_json::from_str(&encoded).expect("deserializable");
     assert_eq!(back, ws);
+}
+
+#[test]
+fn the_descriptor_is_pinned_to_its_literal_wire_shape() {
+    // Same reasoning as the other pinning tests in this crate: a round-trip
+    // alone doesn't catch a silent field rename, since encoder and decoder
+    // still agree with each other after the rename. Assert the exact JSON
+    // object a persisted config or RPC payload would carry, in both
+    // directions.
+    let ws = WorkspaceDescriptor::new("/work/agent-a")
+        .with_trusted_root("/shared")
+        .with_policy_id("worktree")
+        .with_sandbox(SandboxMode::Disabled);
+    let encoded: serde_json::Value = serde_json::to_value(&ws).expect("serializable");
+    assert_eq!(
+        encoded,
+        serde_json::json!({
+            "root": "/work/agent-a",
+            "trusted_roots": ["/shared"],
+            "policy_id": "worktree",
+            "sandbox": "disabled",
+        })
+    );
+
+    let literal =
+        r#"{"root":"/work","trusted_roots":["/shared"],"policy_id":"p","sandbox":"required"}"#;
+    let decoded: WorkspaceDescriptor = serde_json::from_str(literal).expect("deserializable");
+    assert_eq!(decoded.root, std::path::PathBuf::from("/work"));
+    assert_eq!(
+        decoded.trusted_roots,
+        vec![std::path::PathBuf::from("/shared")]
+    );
+    assert_eq!(decoded.policy_id, "p");
+    assert_eq!(decoded.sandbox, SandboxMode::Required);
 }
 
 #[test]

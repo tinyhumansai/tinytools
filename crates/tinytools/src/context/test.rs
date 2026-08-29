@@ -1,3 +1,6 @@
+//! Unit tests for `ToolRunContext`: the trait's defaults, and that a real
+//! implementor is reachable through the erased trait object.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use std::path::{Path, PathBuf};

@@ -1,3 +1,6 @@
+//! Unit tests for `ToolCallOptions` and `ToolTimeout`: their defaults and
+//! that each variant stays distinct.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::{ToolCallOptions, ToolTimeout};

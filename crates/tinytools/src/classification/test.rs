@@ -1,3 +1,6 @@
+//! Unit tests for `ToolScope` and `ToolCategory`: their defaults and the
+//! wire representation each variant serializes to.
+
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::{ToolCategory, ToolScope};
