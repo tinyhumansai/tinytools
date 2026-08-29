@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 description = "The agent tool vocabulary: the `Tool` trait, its result and spec types, and the permission, scope and timeout classifications a host enforces around a call."
 documentation = "https://docs.rs/tinytools"
-readme = "README.md"
+readme = "../../README.md"
 keywords = ["llm", "agents", "tools", "tool-calling"]
 categories = ["asynchronous", "api-bindings"]
 

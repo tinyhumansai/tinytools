@@ -81,6 +81,25 @@ impl WorkspaceDescriptor {
     /// anchored to the current working directory, so a relative path cannot use
     /// leading `..` components to spoof re-entry into a same-named sibling of
     /// the root. If the current directory cannot be read, the gate fails closed.
+    ///
+    /// **This does not resolve symlinks, and that is a real, deliberate limit,
+    /// not an oversight.** A symlink already present inside an allowed root and
+    /// pointing outside it (`<root>/outside -> /etc`) makes `allows` return
+    /// `true` for `<root>/outside/passwd`, because `starts_with` compares path
+    /// *components*, not resolved targets. `canonicalize` would close that gap
+    /// but was rejected here on purpose: it requires the path to already exist
+    /// (this gate must also answer for a file a tool is about to create), and it
+    /// costs a syscall per check on a function called from every tool
+    /// invocation. Resolving that trade-off is a host decision, not this
+    /// crate's — a host that must be robust against a symlink planted inside
+    /// the workspace (an untrusted or compromised tool output, a shared
+    /// filesystem) is expected to canonicalize the resolved path itself and
+    /// re-check containment before it opens the file, in addition to calling
+    /// `allows`. `tinyagents`'s `enforce_workspace_path` is exactly that
+    /// fail-closed host-side gate, and `OpenHuman` layers its own path policy
+    /// (`is_workspace_internal_path`, the sandbox backends) on top for the same
+    /// reason: this method is the first, cheap, existence-independent check,
+    /// never the last word on containment.
     #[must_use]
     pub fn allows(&self, path: &Path) -> bool {
         let Some(candidate) = anchored_normalize(path) else {

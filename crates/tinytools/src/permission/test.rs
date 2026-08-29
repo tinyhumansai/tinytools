@@ -27,7 +27,7 @@ fn display_matches_the_variant_name() {
 }
 
 #[test]
-fn levels_round_trip_as_json_numbers() {
+fn levels_round_trip_through_json() {
     for level in [
         PermissionLevel::None,
         PermissionLevel::ReadOnly,

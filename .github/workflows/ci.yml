@@ -76,9 +76,24 @@ jobs:
           # does exactly that — so grepping the raw line matches the path and
           # reports a dependency that is not there. Cut the version and path off
           # first.
-          forbidden="$(cargo tree -p tinytools -e normal,build --prefix none \
-            | awk '{print $1}' | sort -u \
-            | grep -Exi 'tinyagents|tinybus|tokio|reqwest|ureq|hyper|rusqlite|git2' || true)"
+          package_names="$(cargo tree -p tinytools -e normal,build --prefix none \
+            | awk '{print $1}' | sort -u)"
+          # `grep -E` exits 1 on "no match", which is the success case here, so
+          # it cannot share a `set -e` pipeline with the commands that produced
+          # its input: that would abort the script on the very outcome we want.
+          # Capture its exit status explicitly and only tolerate exactly 1;
+          # anything else (a real grep failure, or a non-1 pipeline failure from
+          # cargo tree/awk/sort surfaced through `pipefail`) still fails the job.
+          forbidden=""
+          set +e
+          forbidden="$(printf '%s\n' "$package_names" \
+            | grep -Exi 'tinyagents|tinybus|tokio|reqwest|ureq|hyper|rusqlite|git2')"
+          grep_status=$?
+          set -e
+          if [ "$grep_status" -ne 0 ] && [ "$grep_status" -ne 1 ]; then
+            echo "dependency scan failed (grep exit $grep_status)" >&2
+            exit "$grep_status"
+          fi
           if [ -n "$forbidden" ]; then
             echo "tinytools pulled in a dependency its manifest forbids:" >&2
             echo "$forbidden" >&2

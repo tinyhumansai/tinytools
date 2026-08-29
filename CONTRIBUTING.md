@@ -7,8 +7,8 @@ this document is the short path through them.
 ## Development Setup
 
 Install a stable Rust toolchain with Rust 2024 support (see `rust-version` in
-`Cargo.toml` for the minimum supported version), initialize the vendored
-then run the four checks CI runs:
+`Cargo.toml` for the minimum supported version), then run the four checks CI
+runs:
 
 ```sh
 cargo fmt --all -- --check

@@ -27,6 +27,16 @@ impl Tool for Echo {
 
 That is a complete tool. Everything else in the trait has a default.
 
+`Tool` is async, so implementing it needs the `async-trait` shim above and
+beyond `tinytools` itself — this crate depends on it internally but does not
+re-export the macro. Add it as a direct dependency alongside `tinytools`:
+
+```toml
+[dependencies]
+tinytools = "0.1"
+async-trait = "0.1"
+```
+
 ## Why this is its own crate
 
 Two crates need these types and neither can own them. An agent harness has to

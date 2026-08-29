@@ -4,12 +4,22 @@ use serde::{Deserialize, Serialize};
 
 /// Result of executing a tool: content blocks plus an error flag.
 ///
-/// The block list mirrors the Model Context Protocol's result shape, which is
-/// what makes a tool backed by an MCP server and one implemented in Rust
-/// interchangeable to the caller. [`Self::is_error`] is a *reported* failure —
-/// the tool ran and said no — and is distinct from the `Err` arm of
-/// [`Tool::execute`][crate::Tool::execute], which means the tool could not run
-/// at all.
+/// The block list is *conceptually* shaped like the Model Context Protocol's
+/// result — a list of content blocks plus a reported-error flag — which is what
+/// lets a tool backed by an MCP server and one implemented in Rust share one
+/// internal representation. **This is this crate's own on-the-wire shape for
+/// agent transcripts, RPC replies and JSONL session records, not a literal MCP
+/// `CallToolResult`**: field names are `snake_case` here (`is_error`, not MCP's
+/// `isError`) to match every other type in this vocabulary, and
+/// [`ToolContent::Json`] is a block kind of this crate's own, not MCP's
+/// `structuredContent`. A host that actually speaks the MCP wire protocol to a
+/// real MCP server is responsible for translating between that server's
+/// `CallToolResult` and this type — same as it already must for whichever
+/// content types each specific server chooses to send — rather than this crate
+/// picking one server's exact JSON casing as its own internal format.
+/// [`Self::is_error`] is a *reported* failure — the tool ran and said no — and
+/// is distinct from the `Err` arm of [`Tool::execute`][crate::Tool::execute],
+/// which means the tool could not run at all.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
     /// List of content blocks returned by the tool.
