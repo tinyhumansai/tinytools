@@ -25,11 +25,12 @@ use crate::spec::ToolSpec;
 /// That split is the point. A tool never enforces policy on itself — it
 /// describes itself accurately and the host enforces.
 ///
-/// # The defaults are not uniformly safe, and two of them fail OPEN
+/// # The defaults are not uniformly safe — four of them are permissive
 ///
-/// Most defaults are the cautious answer — [`Self::scope`] is `All`,
-/// [`Self::is_concurrency_safe`] is `false`, [`Self::timeout_policy`] inherits
-/// the host's bound. Three are not, and a tool author who assumes otherwise
+/// Two defaults are genuinely cautious: [`Self::is_concurrency_safe`] is
+/// `false`, so nothing is dispatched in parallel unless a tool says it is safe,
+/// and [`Self::timeout_policy`] inherits the host's bound rather than opting
+/// out of it. **Four are permissive**, and a tool author who assumes otherwise
 /// ships a hole:
 ///
 /// - **[`Self::external_effect`] defaults to `false`.** A tool that sends an
@@ -45,8 +46,12 @@ use crate::spec::ToolSpec;
 /// - **[`Self::permission_level`] defaults to
 ///   [`PermissionLevel::ReadOnly`]**, not [`PermissionLevel::None`], because
 ///   most tools genuinely read — but a writing tool must say so.
+/// - **[`Self::scope`] defaults to [`ToolScope::All`]**, the *widest* setting:
+///   the tool is offered to the autonomous agent loop, the CLI and RPC alike. A
+///   tool that should only ever be driven deliberately by a human has to say
+///   [`ToolScope::CliRpcOnly`]; leaving the default hands it to the loop.
 ///
-/// If you are reviewing a `Tool` impl, those three are what to check for
+/// If you are reviewing a `Tool` impl, those four are what to check for
 /// absence. The rest are safe to leave alone.
 #[async_trait]
 pub trait Tool: Send + Sync {

@@ -26,6 +26,12 @@ jobs:
           # This job executes repository code (cargo build/test); don't persist
           # the token in git config.
           persist-credentials: false
+          # No `submodules:` entry on purpose: this repository has no
+          # submodules. The template it came from vendored `vendor/tinybus` for
+          # the loadable-module half, which was removed along with that half —
+          # there is no `.gitmodules` and no gitlink in the tree. Adding one
+          # back would be a no-op that implies a dependency this crate does not
+          # have.
 
       - uses: dtolnay/rust-toolchain@stable
         with:

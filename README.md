@@ -62,6 +62,7 @@ compiles neither the harness nor the host.
 | `classification` | `ToolScope`, `ToolCategory` — where a tool may run, and which belt it is on |
 | `call` | `ToolCallOptions`, `ToolTimeout` — per-invocation inputs that are not arguments |
 | `context` | `ToolRunContext` — the narrow seam onto a live run |
+| `workspace` | `WorkspaceDescriptor`, `SandboxMode` — the root a tool may touch, and how strictly it is sandboxed |
 | `naming` | `humanize_tool_name`, `context_detail_from_args` — rendering a call for a human |
 
 ## What is deliberately not here
