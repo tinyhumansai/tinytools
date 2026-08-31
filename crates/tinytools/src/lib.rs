@@ -24,7 +24,7 @@
 //!   a tool hands back.
 //! - [`spec`] — [`ToolSpec`], the declaration a model is shown.
 //! - [`permission`] — [`PermissionLevel`], the privilege ladder.
-//! - [`classification`] — [`ToolScope`] and [`ToolCategory`].
+//! - [`classification`] — [`ToolScope`], [`ToolCategory`] and [`ToolExposure`].
 //! - [`call`] — [`ToolCallOptions`] and [`ToolTimeout`], the per-invocation
 //!   inputs that are not arguments.
 //! - [`context`] — [`ToolRunContext`], the narrow seam onto a live run.
@@ -107,7 +107,7 @@ pub mod tool;
 pub mod workspace;
 
 pub use call::{ToolCallOptions, ToolTimeout};
-pub use classification::{ToolCategory, ToolScope};
+pub use classification::{ToolCategory, ToolExposure, ToolScope};
 pub use context::ToolRunContext;
 pub use naming::{
     ContextDetailOptions, context_detail_from_args, context_detail_from_args_with,

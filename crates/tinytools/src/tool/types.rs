@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::call::{ToolCallOptions, ToolTimeout};
-use crate::classification::{ToolCategory, ToolScope};
+use crate::classification::{ToolCategory, ToolExposure, ToolScope};
 use crate::context::ToolRunContext;
 use crate::naming::{context_detail_from_args, humanize_tool_name};
 use crate::permission::PermissionLevel;
@@ -121,6 +121,17 @@ pub trait Tool: Send + Sync {
     /// Which belt this tool belongs to.
     fn category(&self) -> ToolCategory {
         ToolCategory::System
+    }
+
+    /// Where this tool is exposed to the model.
+    ///
+    /// Defaults to [`ToolExposure::Direct`] so a tool that has not considered
+    /// the question behaves exactly as it did before this method existed.
+    /// Override it on a tool whose schema is large relative to how often the
+    /// model reaches for it — that is the trade this is here to make, and the
+    /// host's own budget report is the place to find the candidates.
+    fn exposure(&self) -> ToolExposure {
+        ToolExposure::Direct
     }
 
     /// Whether two concurrent invocations are safe to run in parallel within a
