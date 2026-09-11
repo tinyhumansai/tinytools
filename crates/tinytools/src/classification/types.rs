@@ -75,7 +75,6 @@ impl ToolExposure {
     }
 }
 
-
 /// Category of a tool — used to scope which tools a given sub-agent may see.
 ///
 /// The distinction is about *where the work happens*: a [`Self::System`] tool
