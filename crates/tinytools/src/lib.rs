@@ -116,5 +116,5 @@ pub use naming::{
 pub use permission::PermissionLevel;
 pub use result::{ToolContent, ToolResult};
 pub use spec::ToolSpec;
-pub use tool::Tool;
+pub use tool::{Tool, ToolExposure};
 pub use workspace::{SandboxMode, WorkspaceDescriptor};
