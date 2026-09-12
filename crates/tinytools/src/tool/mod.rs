@@ -2,7 +2,7 @@
 
 mod types;
 
-pub use types::Tool;
+pub use types::{Tool, ToolExposure};
 
 #[cfg(test)]
 mod test;

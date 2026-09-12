@@ -13,6 +13,19 @@ use crate::permission::PermissionLevel;
 use crate::result::ToolResult;
 use crate::spec::ToolSpec;
 
+/// Whether a tool is advertised directly, discoverable on demand, or kept
+/// internal to a host-owned composite capability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ToolExposure {
+    /// Include the tool in the model's initial catalogue.
+    #[default]
+    Direct,
+    /// Omit it initially but allow a tool-search index to reveal it.
+    Deferred,
+    /// Never advertise or index it; only host code may invoke it.
+    Hidden,
+}
+
 /// A capability an agent can invoke.
 ///
 /// Everything beyond [`Self::name`], [`Self::description`],
@@ -147,6 +160,11 @@ pub trait Tool: Send + Sync {
     /// Which belt this tool belongs to.
     fn category(&self) -> ToolCategory {
         ToolCategory::System
+    }
+
+    /// How this tool enters the model-visible catalogue.
+    fn exposure(&self) -> ToolExposure {
+        ToolExposure::Direct
     }
 
     /// Whether two concurrent invocations are safe to run in parallel within a
