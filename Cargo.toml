@@ -31,6 +31,10 @@ async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
 # Tool arguments and JSON Schema parameter shapes are untyped by nature.
 serde_json = "1"
+# Text-mode tool-call grammars recognize tolerant XML/tag variants.
+regex = "1"
+# Agent protocol diagnostics are optional so the vocabulary crate stays lean.
+tracing = { version = "0.1", default-features = false }
 # `Tool::execute` returns `anyhow::Result` because a tool body calls arbitrary
 # host code and has no useful closed error set of its own.
 anyhow = "1"
