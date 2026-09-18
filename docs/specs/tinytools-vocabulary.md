@@ -20,8 +20,7 @@ error flag ends up inverted in one direction with nothing to catch it.
   and what it touches (privilege, scope, category, concurrency safety,
   external effect, timeout, result size cap, human-facing rendering).
 - Define `ToolResult` / `ToolContent`, the block-list result shape a tool
-  hands back, including an optional `trusted_verbatim` delivery declaration,
-  plus `ToolSpec`, the declaration a model is shown.
+  hands back, plus `ToolSpec`, the declaration a model is shown.
 - Define the permission ladder (`PermissionLevel`), the classification types
   (`ToolScope`, `ToolCategory`), and the per-invocation inputs that are not
   arguments (`ToolCallOptions`, `ToolTimeout`).
@@ -127,12 +126,6 @@ section on the trait itself in `crates/tinytools/src/tool/types.rs`, and
   never supply an injected value: the preparation helper removes every
   declaration name before it reads a host value or derives the call id. Hosts
   validate only the prepared object, never the original model arguments.
-- `ToolResult::trusted_verbatim` defaults to `false` and is omitted on that
-  ordinary wire shape. `ToolResult::verbatim()` records the exceptional `true`
-  declaration for model-facing schemas, signatures, diffs, and similar content
-  that a host should preserve byte-for-byte. The declaration carries no trust
-  enforcement: hosts decide whether a producer may set it and whether to honor
-  it.
 
 ## Acceptance criteria
 

@@ -37,13 +37,6 @@ with a reported-error flag and optional markdown rendering. `ToolSpec` is the
 model-visible declaration. `ToolRunContext` exposes only tool-relevant run
 facts: workspace, thread id, and output cap.
 
-`ToolResult::verbatim()` sets its serializable `trusted_verbatim` declaration.
-The field defaults to `false` and is omitted from that ordinary wire shape. A
-`true` value asks a consuming runtime to keep the model-facing content
-byte-for-byte, for example an input schema, signature, or diff where a
-faithful-looking rewrite would be incorrect. TinyTools only carries this data:
-the host decides which producers are trusted and whether it honors the request.
-
 `ToolPolicy` is the complete host-readable declaration around a call:
 
 - `ToolSideEffects` records filesystem, network, dependency, destructive,

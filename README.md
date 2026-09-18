@@ -126,12 +126,6 @@ rules are likewise wire contracts for persisted policy and registry
 introspection; literal-wire tests pin every timeout variant and a fully
 populated policy declaration.
 
-`ToolResult::trusted_verbatim` is likewise persisted vocabulary. It defaults to
-`false` and is omitted on serialization, preserving existing transcript and
-RPC shapes. `ToolResult::verbatim()` records the exceptional `true` declaration
-for a host that must preserve model-facing content byte-for-byte; it is data,
-not a policy decision or an enforcement mechanism.
-
 ## Injected arguments and call identity
 
 `ToolCall` / `ToolCallId` carry a model request's identity outside
