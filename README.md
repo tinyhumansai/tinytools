@@ -34,7 +34,7 @@ re-export the macro. Add it as a direct dependency alongside `tinytools`:
 
 ```toml
 [dependencies]
-tinytools = "0.1"
+tinytools = "0.2"
 async-trait = "0.1"
 ```
 
@@ -60,6 +60,7 @@ compiles neither the harness nor the host.
 | `spec` | `ToolSpec` — the declaration a model is shown |
 | `permission` | `PermissionLevel` — the privilege ladder, ordered `None` → `Dangerous` |
 | `classification` | `ToolScope`, `ToolCategory` — where a tool may run, and which belt it is on |
+| `policy` | `ToolPolicy`, `ToolRuntime`, `ToolAccess`, `ToolSideEffects`, `WorkspaceAccess`, `ToolDisplay` — declarative execution requirements and presentation metadata |
 | `call` | `ToolCallOptions`, `ToolTimeout` — per-invocation inputs that are not arguments |
 | `context` | `ToolRunContext` — the narrow seam onto a live run |
 | `workspace` | `WorkspaceDescriptor`, `SandboxMode` — the root a tool may touch, and how strictly it is sandboxed |
@@ -109,6 +110,21 @@ Two consequences worth knowing:
 - **The argument-aware variants are the ones a host calls** at the enforcement
   point. Overriding only `external_effect` on a tool whose classification
   depends on its arguments leaves the per-call case unhandled.
+
+`Tool::policy()` carries the complete declarative form for hosts that need a
+single auditable projection: side effects, runtime requirements, access
+requirements, and display metadata. It defaults to unclassified; a host may
+therefore reject undeclared tools without TinyTools making an admission decision.
+The policy is descriptive only. It never enforces approval, credentials,
+sandboxing, cancellation, deadlines, retries, workspace containment, or result
+limits.
+
+`ToolTimeout` has three stable JSON forms:
+`{ "mode": "inherit" }`, `{ "mode": "unbounded" }`, and
+`{ "mode": "millis", "timeout_ms": <u64> }`. Policy field names and omission
+rules are likewise wire contracts for persisted policy and registry
+introspection; literal-wire tests pin every timeout variant and a fully
+populated policy declaration.
 
 ## Development
 

@@ -117,3 +117,76 @@ fn policy_round_trips_through_its_stable_json_shape() {
     let decoded: ToolPolicy = serde_json::from_value(encoded).expect("deserializable");
     assert_eq!(decoded, policy);
 }
+
+#[test]
+fn fully_populated_policy_has_a_pinned_json_wire_shape() {
+    let policy = ToolPolicy {
+        classified: true,
+        side_effects: ToolSideEffects {
+            read_only: true,
+            writes_files: true,
+            network: true,
+            installs_dependencies: true,
+            destructive: true,
+            external_service: true,
+            payment: true,
+        },
+        runtime: ToolRuntime {
+            timeout_ms: Some(125),
+            timeout: ToolTimeout::Millis(250),
+            max_retries: Some(3),
+            idempotent: true,
+            cancelable: true,
+            sandbox: SandboxMode::Required,
+            max_result_bytes: Some(8_192),
+            streaming: true,
+        },
+        access: ToolAccess {
+            workspace: WorkspaceAccess::Scoped,
+            trusted_roots: vec!["/work/agent".into(), "/work/shared".into()],
+            credentials: vec!["calendar".into(), "mail".into()],
+            approval_required: true,
+            background_safe: true,
+        },
+        display: ToolDisplay::new(Some("Send invite"), Some("recipient")),
+    };
+    let wire = serde_json::json!({
+        "classified": true,
+        "side_effects": {
+            "read_only": true,
+            "writes_files": true,
+            "network": true,
+            "installs_dependencies": true,
+            "destructive": true,
+            "external_service": true,
+            "payment": true,
+        },
+        "runtime": {
+            "timeout_ms": 125,
+            "timeout": { "mode": "millis", "timeout_ms": 250 },
+            "max_retries": 3,
+            "idempotent": true,
+            "cancelable": true,
+            "sandbox": "required",
+            "max_result_bytes": 8192,
+            "streaming": true,
+        },
+        "access": {
+            "workspace": "scoped",
+            "trusted_roots": ["/work/agent", "/work/shared"],
+            "credentials": ["calendar", "mail"],
+            "approval_required": true,
+            "background_safe": true,
+        },
+        "display": {
+            "label": "Send invite",
+            "detail": "recipient",
+        },
+    });
+
+    assert_eq!(serde_json::to_value(&policy).expect("serializable"), wire);
+    assert_eq!(
+        serde_json::from_value::<ToolPolicy>(wire).expect("deserializable"),
+        policy
+    );
+}
