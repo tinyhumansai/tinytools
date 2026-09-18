@@ -65,6 +65,11 @@ compiles neither the harness nor the host.
 | `workspace` | `WorkspaceDescriptor`, `SandboxMode` — the root a tool may touch, and how strictly it is sandboxed |
 | `naming` | `humanize_tool_name`, `context_detail_from_args` — rendering a call for a human |
 
+The workspace also contains `tinytools-agent`, a separate crate for
+model-facing tool-call parsing, dialects, catalogue/result rendering, and
+transcript replay. It builds on `ToolSpec` without adding agent-loop or provider
+dependencies to the base `tinytools` vocabulary crate.
+
 ## What is deliberately not here
 
 **No enforcement.** Nothing in this crate checks a `PermissionLevel`, applies a
