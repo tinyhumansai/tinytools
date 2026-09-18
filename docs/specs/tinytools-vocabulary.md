@@ -30,6 +30,14 @@ error flag ends up inverted in one direction with nothing to catch it.
   (`ToolSideEffects`), and host-facing presentation metadata (`ToolDisplay`).
   `Tool::policy()` returns this declaration and defaults to unclassified, so a
   host may admit tools fail-closed without this crate making that decision.
+- Define model-call vocabulary independently of provider protocol types:
+  `ToolCallId` and `ToolCall` carry a stable request identity outside
+  `ToolResult`; `ToolInjectedArgument` declares host- or call-id-owned schema
+  keys. `project_injected_arguments` produces the model-facing schema, while
+  `prepare_tool_arguments` strips model-supplied values, injects authoritative
+  runtime-only `InjectedToolArguments`, and returns the object a host validates
+  against the declared tool schema. Injection values intentionally have no
+  serde representation because they may contain credentials.
 - Provide `ToolRunContext`, a narrow trait erasing a harness's run-scoped
   context (the isolated-workspace root being the common case) so a tool can
   read run facts without this crate naming the harness type that carries them.
@@ -114,6 +122,10 @@ section on the trait itself in `crates/tinytools/src/tool/types.rs`, and
   `ToolPolicy` field names and omission rules are likewise a persisted policy
   and introspection contract, including limits, trusted roots, credentials,
   and display metadata.
+- `ToolCall` and `ToolInjectedArgument` are literal-wire tested. A model can
+  never supply an injected value: the preparation helper removes every
+  declaration name before it reads a host value or derives the call id. Hosts
+  validate only the prepared object, never the original model arguments.
 
 ## Acceptance criteria
 

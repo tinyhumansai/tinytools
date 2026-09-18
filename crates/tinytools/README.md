@@ -52,6 +52,22 @@ tools fail-closed can refuse that default. The policy is descriptive only:
 TinyTools does not enforce approvals, credentials, workspace containment,
 sandboxing, cancellation, deadlines, retries, or result limits.
 
+## Injected arguments and call identity
+
+`ToolCall` and its `ToolCallId` carry the identity of one parsed model request.
+That identity is invocation metadata, not a `ToolResult` field, so a harness can
+correlate events and results without mutating tool-owned output.
+
+A tool declares host-owned schema keys with `Tool::injected_arguments()`, using
+`ToolInjectedArgument::host` or `ToolInjectedArgument::tool_call_id`. The host
+uses `project_injected_arguments` for the model-facing schema, keeps
+authoritative values in runtime-only `InjectedToolArguments`, and calls
+`prepare_tool_arguments` before schema validation. The helper strips the
+model-supplied protected keys, inserts authoritative values, and returns the
+object to validate. It never serializes host values, and it ignores values for
+undeclared keys. This ordering prevents a model from forging a protected
+argument while keeping model arguments model-owned.
+
 `ToolTimeout` is serializable and has exactly three wire forms:
 
 | Rust value | JSON |
@@ -63,6 +79,8 @@ sandboxing, cancellation, deadlines, retries, or result limits.
 All policy vocabulary uses the documented serde field names. These forms are
 part of the public persistence and introspection contract; change them only
 with an intentional compatibility migration and updated literal-wire tests.
+`ToolCall` and `ToolInjectedArgument` are likewise serialized vocabulary;
+`InjectedToolArguments` intentionally is not, because it may hold credentials.
 
 ## Boundaries
 

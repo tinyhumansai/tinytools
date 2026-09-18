@@ -13,8 +13,8 @@ use serde_json::{Value, json};
 
 use super::Tool;
 use crate::{
-    PermissionLevel, ToolCallOptions, ToolCategory, ToolDisplay, ToolPolicy, ToolResult,
-    ToolRunContext, ToolRuntime, ToolScope, ToolTimeout,
+    PermissionLevel, ToolCallOptions, ToolCategory, ToolDisplay, ToolInjectedArgument, ToolPolicy,
+    ToolResult, ToolRunContext, ToolRuntime, ToolScope, ToolTimeout,
 };
 
 /// A tool implementing only the four required methods, so every default is
@@ -101,6 +101,43 @@ fn the_declaration_defaults_are_the_conservative_answer() {
     assert!(tool.host_extension().is_none());
     assert!(tool.host_call_extension(&Value::Null).is_none());
     assert_eq!(tool.policy(), ToolPolicy::default());
+    assert!(tool.injected_arguments().is_empty());
+}
+
+#[test]
+fn tools_declare_injected_argument_sources_without_exposing_values() {
+    struct Injected;
+
+    #[async_trait]
+    impl Tool for Injected {
+        fn name(&self) -> &str {
+            "injected"
+        }
+
+        fn description(&self) -> &str {
+            "Uses host-owned arguments"
+        }
+
+        fn parameters_schema(&self) -> Value {
+            json!({ "type": "object" })
+        }
+
+        async fn execute(&self, _args: Value) -> anyhow::Result<ToolResult> {
+            Ok(ToolResult::success("ok"))
+        }
+
+        fn injected_arguments(&self) -> Vec<ToolInjectedArgument> {
+            vec![
+                ToolInjectedArgument::host("account_id"),
+                ToolInjectedArgument::tool_call_id("call_id"),
+            ]
+        }
+    }
+
+    let declarations = Injected.injected_arguments();
+    assert_eq!(declarations.len(), 2);
+    assert_eq!(declarations[0].name, "account_id");
+    assert_eq!(declarations[1].name, "call_id");
 }
 
 /// A tool whose complete declaration lives in the canonical policy vocabulary.

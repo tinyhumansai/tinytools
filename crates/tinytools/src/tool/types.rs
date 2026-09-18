@@ -5,7 +5,7 @@ use std::any::Any;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::call::{ToolCallOptions, ToolTimeout};
+use crate::call::{ToolCallOptions, ToolInjectedArgument, ToolTimeout};
 use crate::classification::{ToolCategory, ToolScope};
 use crate::context::ToolRunContext;
 use crate::naming::{context_detail_from_args, humanize_tool_name};
@@ -132,6 +132,17 @@ pub trait Tool: Send + Sync {
     /// that admission decision.
     fn policy(&self) -> ToolPolicy {
         ToolPolicy::default()
+    }
+
+    /// Declares arguments the host, rather than the model, supplies for a call.
+    ///
+    /// A harness removes these names from its model-visible schema, calls
+    /// [`crate::prepare_tool_arguments`] before schema validation, and then
+    /// passes the validated result to this tool. The returned declaration never
+    /// carries a host value, so tools cannot accidentally expose credentials or
+    /// other authority through their model-facing schema.
+    fn injected_arguments(&self) -> Vec<ToolInjectedArgument> {
+        Vec::new()
     }
 
     /// Whether this tool can produce a markdown rendering when

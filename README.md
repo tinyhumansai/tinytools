@@ -126,6 +126,17 @@ rules are likewise wire contracts for persisted policy and registry
 introspection; literal-wire tests pin every timeout variant and a fully
 populated policy declaration.
 
+## Injected arguments and call identity
+
+`ToolCall` / `ToolCallId` carry a model request's identity outside
+`ToolResult`, where a harness can correlate it with its own events and elapsed
+time. `Tool::injected_arguments()` declares schema keys owned by either the
+host or the call id. A harness uses `project_injected_arguments` for the
+model-facing schema, then runtime-only `InjectedToolArguments` and
+`prepare_tool_arguments` to strip model-supplied protected values, inject the
+authoritative values, and validate the returned object. Host values are never
+serialized or exposed to the model.
+
 ## Development
 
 ```bash

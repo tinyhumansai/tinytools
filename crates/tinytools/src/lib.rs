@@ -109,7 +109,11 @@ pub mod spec;
 pub mod tool;
 pub mod workspace;
 
-pub use call::{ToolCallOptions, ToolTimeout};
+pub use call::{
+    InjectedToolArguments, ToolArgumentPreparationError, ToolCall, ToolCallId, ToolCallOptions,
+    ToolInjectedArgument, ToolInjectedArgumentSource, ToolTimeout, prepare_tool_arguments,
+    project_injected_arguments,
+};
 pub use classification::{ToolCategory, ToolScope};
 pub use context::ToolRunContext;
 pub use naming::{
