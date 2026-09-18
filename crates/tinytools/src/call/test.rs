@@ -198,3 +198,46 @@ fn preparation_rejects_missing_host_values_duplicate_declarations_and_non_object
         .expect_err("schema arguments must begin as an object");
     assert_eq!(error, ToolArgumentPreparationError::ArgumentsMustBeObject);
 }
+
+#[test]
+fn preparation_errors_describe_each_invalid_input() {
+    let cases = [
+        (
+            ToolArgumentPreparationError::ArgumentsMustBeObject,
+            "tool arguments must be a JSON object",
+        ),
+        (
+            ToolArgumentPreparationError::DuplicateDeclaration {
+                name: "account_id".into(),
+            },
+            "duplicate injected argument declaration: account_id",
+        ),
+        (
+            ToolArgumentPreparationError::MissingHostValue {
+                name: "account_id".into(),
+            },
+            "missing host value for injected argument: account_id",
+        ),
+    ];
+
+    for (error, message) in cases {
+        assert_eq!(error.to_string(), message);
+    }
+}
+
+#[test]
+fn projection_leaves_non_object_schema_members_unchanged() {
+    let declarations = [ToolInjectedArgument::host("account_id")];
+    let scalar = serde_json::json!("not an object schema");
+    assert_eq!(project_injected_arguments(&scalar, &declarations), scalar);
+
+    let malformed_members = serde_json::json!({
+        "properties": "not an object",
+        "required": "not an array",
+        "title": "preserved",
+    });
+    assert_eq!(
+        project_injected_arguments(&malformed_members, &declarations),
+        malformed_members
+    );
+}

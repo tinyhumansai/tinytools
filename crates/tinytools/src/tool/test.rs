@@ -104,8 +104,8 @@ fn the_declaration_defaults_are_the_conservative_answer() {
     assert!(tool.injected_arguments().is_empty());
 }
 
-#[test]
-fn tools_declare_injected_argument_sources_without_exposing_values() {
+#[tokio::test]
+async fn tools_declare_injected_argument_sources_without_exposing_values() {
     struct Injected;
 
     #[async_trait]
@@ -134,7 +134,14 @@ fn tools_declare_injected_argument_sources_without_exposing_values() {
         }
     }
 
-    let declarations = Injected.injected_arguments();
+    let tool = Injected;
+    assert_eq!(tool.name(), "injected");
+    assert_eq!(tool.description(), "Uses host-owned arguments");
+    assert_eq!(tool.parameters_schema(), json!({ "type": "object" }));
+    let result = tool.execute(Value::Null).await.expect("the tool runs");
+    assert_eq!(result.output(), "ok");
+
+    let declarations = tool.injected_arguments();
     assert_eq!(declarations.len(), 2);
     assert_eq!(declarations[0].name, "account_id");
     assert_eq!(declarations[1].name, "call_id");
@@ -171,9 +178,14 @@ impl Tool for DeclaredTool {
     }
 }
 
-#[test]
-fn policy_declaration_drives_the_default_timeout_and_display_metadata() {
+#[tokio::test]
+async fn policy_declaration_drives_the_default_timeout_and_display_metadata() {
     let tool = DeclaredTool;
+    assert_eq!(tool.name(), "declared_tool");
+    assert_eq!(tool.description(), "A tool with a policy declaration");
+    assert_eq!(tool.parameters_schema(), json!({ "type": "object" }));
+    let result = tool.execute(Value::Null).await.expect("the tool runs");
+    assert_eq!(result.output(), "done");
     assert!(tool.policy().classified);
     assert_eq!(tool.timeout_policy(&Value::Null), ToolTimeout::Millis(250));
     assert_eq!(
@@ -271,6 +283,11 @@ impl ToolRunContext for Isolated {
 #[tokio::test]
 async fn a_tool_reads_its_workspace_root_through_the_erased_context() {
     let context = Isolated(PathBuf::from("/tmp/worktree"));
+    let direct = WorkspaceTool
+        .execute(Value::Null)
+        .await
+        .expect("the tool runs");
+    assert_eq!(direct.output(), "no workspace");
     let result = WorkspaceTool
         .execute_with_context(Value::Null, ToolCallOptions::default(), Some(&context))
         .await
@@ -302,6 +319,9 @@ fn a_host_recovers_its_own_metadata_by_downcasting() {
 #[test]
 fn overridden_declarations_are_visible_through_a_trait_object() {
     let erased: &dyn Tool = &WorkspaceTool;
+    assert_eq!(erased.name(), "workspace_tool");
+    assert_eq!(erased.description(), "Reports the root it was given");
+    assert_eq!(erased.parameters_schema(), json!({ "type": "object" }));
     assert_eq!(erased.permission_level(), PermissionLevel::Execute);
     assert!(erased.external_effect());
     assert_eq!(erased.timeout_policy(&Value::Null), ToolTimeout::Unbounded);
