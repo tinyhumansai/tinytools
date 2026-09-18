@@ -11,6 +11,7 @@ use super::{ToolContent, ToolResult};
 fn success_carries_one_text_block() {
     let r = ToolResult::success("done");
     assert!(!r.is_error);
+    assert!(!r.trusted_verbatim);
     assert_eq!(r.text(), "done");
     assert_eq!(r.output(), "done");
 }
@@ -45,6 +46,7 @@ fn mixed_content_joins_in_order() {
             },
         ],
         is_error: false,
+        trusted_verbatim: false,
         markdown_formatted: None,
     };
     assert_eq!(r.text(), "line1\nline2");
@@ -59,6 +61,7 @@ fn empty_content_renders_empty() {
     let r = ToolResult {
         content: vec![],
         is_error: false,
+        trusted_verbatim: false,
         markdown_formatted: None,
     };
     assert!(r.text().is_empty());
@@ -81,13 +84,14 @@ fn result_is_pinned_to_its_literal_wire_shape() {
     // deserializer that changed still agree with each other. Assert the exact
     // JSON a persisted transcript or RPC reply would carry, in both
     // directions.
-    let r = ToolResult::success_with_markdown(json!({"a": 1}), "**a**: 1");
+    let r = ToolResult::success_with_markdown(json!({"a": 1}), "**a**: 1").verbatim();
     let encoded: serde_json::Value = serde_json::to_value(&r).expect("serializable");
     assert_eq!(
         encoded,
         json!({
             "content": [{ "type": "json", "data": { "a": 1 } }],
             "is_error": false,
+            "trusted_verbatim": true,
             "markdownFormatted": "**a**: 1",
         })
     );
@@ -95,6 +99,7 @@ fn result_is_pinned_to_its_literal_wire_shape() {
     let literal = r#"{"content":[{"type":"text","text":"hi"}],"is_error":true}"#;
     let decoded: ToolResult = serde_json::from_str(literal).expect("deserializable");
     assert!(decoded.is_error);
+    assert!(!decoded.trusted_verbatim);
     assert_eq!(decoded.text(), "hi");
     assert_eq!(decoded.markdown_formatted, None);
 }
@@ -143,10 +148,34 @@ fn output_for_llm_falls_back_when_markdown_is_absent_or_blank() {
 }
 
 #[test]
+fn verbatim_builder_marks_the_result_without_changing_its_rendering() {
+    let result = ToolResult::success("--- a/file\n+++ b/file").verbatim();
+
+    assert!(result.trusted_verbatim);
+    assert_eq!(result.output(), "--- a/file\n+++ b/file");
+    assert_eq!(result.output_for_llm(true), "--- a/file\n+++ b/file");
+}
+
+#[test]
 fn the_markdown_field_keeps_its_composio_wire_name() {
     let r = ToolResult::success_with_markdown(json!({"a": 1}), "**a**: 1");
     let encoded = serde_json::to_string(&r).expect("serializable");
     assert!(encoded.contains("markdownFormatted"));
     let back: ToolResult = serde_json::from_str(&encoded).expect("deserializable");
     assert_eq!(back.markdown_formatted.as_deref(), Some("**a**: 1"));
+}
+
+#[test]
+fn trusted_verbatim_round_trips_and_false_is_omitted_from_the_wire() {
+    let trusted = ToolResult::success("schema").verbatim();
+    let trusted_wire = serde_json::to_value(&trusted).expect("serializable");
+    assert_eq!(trusted_wire["trusted_verbatim"], true);
+    let trusted_back: ToolResult = serde_json::from_value(trusted_wire).expect("deserializable");
+    assert!(trusted_back.trusted_verbatim);
+
+    let ordinary = ToolResult::success("ordinary");
+    let ordinary_wire = serde_json::to_value(&ordinary).expect("serializable");
+    assert!(ordinary_wire.get("trusted_verbatim").is_none());
+    let ordinary_back: ToolResult = serde_json::from_value(ordinary_wire).expect("deserializable");
+    assert!(!ordinary_back.trusted_verbatim);
 }

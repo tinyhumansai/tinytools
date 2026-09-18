@@ -2,7 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Result of executing a tool: content blocks plus an error flag.
+/// Result of executing a tool: content blocks plus reported-error and
+/// delivery declarations.
 ///
 /// The block list is *conceptually* shaped like the Model Context Protocol's
 /// result — a list of content blocks plus a reported-error flag — which is what
@@ -27,6 +28,16 @@ pub struct ToolResult {
     /// Indicates if the tool encountered an error during execution.
     #[serde(default)]
     pub is_error: bool,
+    /// Whether a consuming runtime should preserve the model-facing result
+    /// byte-for-byte.
+    ///
+    /// Defaults to `false`, the ordinary case where a host may safely batch,
+    /// frame, or compact output. `true` marks data for which a faithful-looking
+    /// rewrite is still wrong, such as an input schema, signature, or diff.
+    /// This is a declaration only: `TinyTools` does not decide which producers
+    /// may set it or require a host to honor it.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub trusted_verbatim: bool,
     /// Optional markdown rendering of the result.
     ///
     /// When the agent loop is configured with
@@ -49,6 +60,7 @@ impl ToolResult {
         Self {
             content: vec![ToolContent::Text { text: text.into() }],
             is_error: false,
+            trusted_verbatim: false,
             markdown_formatted: None,
         }
     }
@@ -63,6 +75,7 @@ impl ToolResult {
                 text: message.into(),
             }],
             is_error: true,
+            trusted_verbatim: false,
             markdown_formatted: None,
         }
     }
@@ -73,6 +86,7 @@ impl ToolResult {
         Self {
             content: vec![ToolContent::Json { data }],
             is_error: false,
+            trusted_verbatim: false,
             markdown_formatted: None,
         }
     }
@@ -84,6 +98,7 @@ impl ToolResult {
         Self {
             content: vec![ToolContent::Json { data }],
             is_error: false,
+            trusted_verbatim: false,
             markdown_formatted: Some(markdown.into()),
         }
     }
@@ -92,6 +107,19 @@ impl ToolResult {
     #[must_use]
     pub fn with_markdown(mut self, markdown: impl Into<String>) -> Self {
         self.markdown_formatted = Some(markdown.into());
+        self
+    }
+
+    /// Declares this result's model-facing content must be preserved unchanged.
+    ///
+    /// A host may ordinarily batch, frame, truncate, or compact tool output.
+    /// Use this opt-in only when such a transformation would make otherwise
+    /// plausible content incorrect, such as an input schema, signature, or
+    /// diff. This builder only carries the declaration; selecting trusted
+    /// producers and honoring the request remain host responsibilities.
+    #[must_use]
+    pub fn verbatim(mut self) -> Self {
+        self.trusted_verbatim = true;
         self
     }
 
@@ -141,6 +169,11 @@ impl ToolResult {
             .collect::<Vec<_>>()
             .join("\n")
     }
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// A single content block within a [`ToolResult`].
