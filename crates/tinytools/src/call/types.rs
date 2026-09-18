@@ -1,5 +1,7 @@
 //! Per-invocation inputs that are not part of a tool's argument schema.
 
+use serde::{Deserialize, Serialize};
+
 /// Per-invocation options threaded from the agent loop into a tool.
 ///
 /// These let a caller hint at how the tool should shape its output without
@@ -28,14 +30,15 @@ impl ToolCallOptions {
     }
 }
 
-/// How the harness should bound a single tool invocation in wall-clock time.
+/// How a host should bound a single tool invocation in wall-clock time.
 ///
 /// Returned by [`Tool::timeout_policy`][crate::Tool::timeout_policy]. The three
 /// arms exist because scripting tools and network tools want opposite defaults:
 /// a hung HTTP call must not wedge a session, but a build or test run
 /// legitimately takes minutes and must not be hard-killed by a network-shaped
 /// cap.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "mode", content = "timeout_ms")]
 pub enum ToolTimeout {
     /// Use the global, operator- and config-driven tool timeout. The right
     /// default for most tools.
@@ -44,9 +47,9 @@ pub enum ToolTimeout {
     /// Run without any harness-imposed deadline. Scripting tools return this
     /// when the caller did not request an explicit budget.
     Unbounded,
-    /// Enforce exactly this many seconds. A host is expected to clamp the value
-    /// into its own valid range rather than trust it.
-    Secs(u64),
+    /// Enforce exactly this many milliseconds. A host is expected to clamp the
+    /// value into its own valid range rather than trust it.
+    Millis(u64),
 }
 
 impl ToolTimeout {

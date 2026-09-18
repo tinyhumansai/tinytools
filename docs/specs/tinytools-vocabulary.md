@@ -24,6 +24,20 @@ error flag ends up inverted in one direction with nothing to catch it.
 - Define the permission ladder (`PermissionLevel`), the classification types
   (`ToolScope`, `ToolCategory`), and the per-invocation inputs that are not
   arguments (`ToolCallOptions`, `ToolTimeout`).
+- Define `ToolPolicy` as the complete declarative policy vocabulary: runtime
+  requirements (`ToolRuntime`), access requirements (`ToolAccess` and
+  `WorkspaceAccess`), independent side-effect declarations
+  (`ToolSideEffects`), and host-facing presentation metadata (`ToolDisplay`).
+  `Tool::policy()` returns this declaration and defaults to unclassified, so a
+  host may admit tools fail-closed without this crate making that decision.
+- Define model-call vocabulary independently of provider protocol types:
+  `ToolCallId` and `ToolCall` carry a stable request identity outside
+  `ToolResult`; `ToolInjectedArgument` declares host- or call-id-owned schema
+  keys. `project_injected_arguments` produces the model-facing schema, while
+  `prepare_tool_arguments` strips model-supplied values, injects authoritative
+  runtime-only `InjectedToolArguments`, and returns the object a host validates
+  against the declared tool schema. Injection values intentionally have no
+  serde representation because they may contain credentials.
 - Provide `ToolRunContext`, a narrow trait erasing a harness's run-scoped
   context (the isolated-workspace root being the common case) so a tool can
   read run facts without this crate naming the harness type that carries them.
@@ -98,9 +112,20 @@ section on the trait itself in `crates/tinytools/src/tool/types.rs`, and
   (`# Errors` / `# Panics`).
 - Every public item carries rustdoc; `missing_docs` is a CI-blocking warning.
 - Wire-shape-bearing types (`PermissionLevel`, `ToolSpec`, `ToolResult`,
-  `WorkspaceDescriptor`) are pinned by a literal-JSON test, not merely a
+  `WorkspaceDescriptor`, `ToolTimeout`, and `ToolPolicy`) are pinned by a
+  literal-JSON test, not merely a
   round-trip, so a silent field rename fails a test instead of a downstream
   consumer's persisted data.
+- `ToolTimeout` has only three canonical JSON forms:
+  `{ "mode": "inherit" }`, `{ "mode": "unbounded" }`, and
+  `{ "mode": "millis", "timeout_ms": <u64> }`.
+  `ToolPolicy` field names and omission rules are likewise a persisted policy
+  and introspection contract, including limits, trusted roots, credentials,
+  and display metadata.
+- `ToolCall` and `ToolInjectedArgument` are literal-wire tested. A model can
+  never supply an injected value: the preparation helper removes every
+  declaration name before it reads a host value or derives the call id. Hosts
+  validate only the prepared object, never the original model arguments.
 
 ## Acceptance criteria
 
@@ -111,9 +136,9 @@ section on the trait itself in `crates/tinytools/src/tool/types.rs`, and
   (`.github/scripts/check-file-coverage.sh 90 coverage.json`).
 - `cargo doc --no-deps --all-features` and `cargo deny check all` pass.
 - The dependency-light CI gate passes against the reviewed allowlist.
-- `README.md` (the repository root's, which is this crate's packaged
-  README — see `crates/tinytools/Cargo.toml`'s `readme` field) and this
-  specification stay aligned with the public surface as it evolves.
+- `crates/tinytools/README.md` (the crate's packaged README, selected by
+  `crates/tinytools/Cargo.toml`) and this specification stay aligned with the
+  public surface as it evolves.
 
 ## Open questions
 

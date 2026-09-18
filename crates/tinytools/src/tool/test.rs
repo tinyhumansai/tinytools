@@ -13,8 +13,8 @@ use serde_json::{Value, json};
 
 use super::Tool;
 use crate::{
-    PermissionLevel, ToolCallOptions, ToolCategory, ToolResult, ToolRunContext, ToolScope,
-    ToolTimeout,
+    PermissionLevel, ToolCallOptions, ToolCategory, ToolDisplay, ToolInjectedArgument, ToolPolicy,
+    ToolResult, ToolRunContext, ToolRuntime, ToolScope, ToolTimeout,
 };
 
 /// A tool implementing only the four required methods, so every default is
@@ -100,6 +100,102 @@ fn the_declaration_defaults_are_the_conservative_answer() {
     assert_eq!(tool.timeout_policy(&Value::Null), ToolTimeout::Inherit);
     assert!(tool.host_extension().is_none());
     assert!(tool.host_call_extension(&Value::Null).is_none());
+    assert_eq!(tool.policy(), ToolPolicy::default());
+    assert!(tool.injected_arguments().is_empty());
+}
+
+#[tokio::test]
+async fn tools_declare_injected_argument_sources_without_exposing_values() {
+    struct Injected;
+
+    #[async_trait]
+    impl Tool for Injected {
+        fn name(&self) -> &str {
+            "injected"
+        }
+
+        fn description(&self) -> &str {
+            "Uses host-owned arguments"
+        }
+
+        fn parameters_schema(&self) -> Value {
+            json!({ "type": "object" })
+        }
+
+        async fn execute(&self, _args: Value) -> anyhow::Result<ToolResult> {
+            Ok(ToolResult::success("ok"))
+        }
+
+        fn injected_arguments(&self) -> Vec<ToolInjectedArgument> {
+            vec![
+                ToolInjectedArgument::host("account_id"),
+                ToolInjectedArgument::tool_call_id("call_id"),
+            ]
+        }
+    }
+
+    let tool = Injected;
+    assert_eq!(tool.name(), "injected");
+    assert_eq!(tool.description(), "Uses host-owned arguments");
+    assert_eq!(tool.parameters_schema(), json!({ "type": "object" }));
+    let result = tool.execute(Value::Null).await.expect("the tool runs");
+    assert_eq!(result.output(), "ok");
+
+    let declarations = tool.injected_arguments();
+    assert_eq!(declarations.len(), 2);
+    assert_eq!(declarations[0].name, "account_id");
+    assert_eq!(declarations[1].name, "call_id");
+}
+
+/// A tool whose complete declaration lives in the canonical policy vocabulary.
+struct DeclaredTool;
+
+#[async_trait]
+impl Tool for DeclaredTool {
+    fn name(&self) -> &str {
+        "declared_tool"
+    }
+
+    fn description(&self) -> &str {
+        "A tool with a policy declaration"
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({ "type": "object" })
+    }
+
+    async fn execute(&self, _args: Value) -> anyhow::Result<ToolResult> {
+        Ok(ToolResult::success("done"))
+    }
+
+    fn policy(&self) -> ToolPolicy {
+        ToolPolicy::read_only()
+            .with_runtime(ToolRuntime {
+                timeout_ms: Some(250),
+                ..ToolRuntime::default()
+            })
+            .with_display(ToolDisplay::label("Inspect workspace").with_detail("repository"))
+    }
+}
+
+#[tokio::test]
+async fn policy_declaration_drives_the_default_timeout_and_display_metadata() {
+    let tool = DeclaredTool;
+    assert_eq!(tool.name(), "declared_tool");
+    assert_eq!(tool.description(), "A tool with a policy declaration");
+    assert_eq!(tool.parameters_schema(), json!({ "type": "object" }));
+    let result = tool.execute(Value::Null).await.expect("the tool runs");
+    assert_eq!(result.output(), "done");
+    assert!(tool.policy().classified);
+    assert_eq!(tool.timeout_policy(&Value::Null), ToolTimeout::Millis(250));
+    assert_eq!(
+        tool.display_label(&Value::Null).as_deref(),
+        Some("Inspect workspace")
+    );
+    assert_eq!(
+        tool.display_detail(&Value::Null).as_deref(),
+        Some("repository")
+    );
 }
 
 #[test]
@@ -187,6 +283,11 @@ impl ToolRunContext for Isolated {
 #[tokio::test]
 async fn a_tool_reads_its_workspace_root_through_the_erased_context() {
     let context = Isolated(PathBuf::from("/tmp/worktree"));
+    let direct = WorkspaceTool
+        .execute(Value::Null)
+        .await
+        .expect("the tool runs");
+    assert_eq!(direct.output(), "no workspace");
     let result = WorkspaceTool
         .execute_with_context(Value::Null, ToolCallOptions::default(), Some(&context))
         .await
@@ -218,6 +319,9 @@ fn a_host_recovers_its_own_metadata_by_downcasting() {
 #[test]
 fn overridden_declarations_are_visible_through_a_trait_object() {
     let erased: &dyn Tool = &WorkspaceTool;
+    assert_eq!(erased.name(), "workspace_tool");
+    assert_eq!(erased.description(), "Reports the root it was given");
+    assert_eq!(erased.parameters_schema(), json!({ "type": "object" }));
     assert_eq!(erased.permission_level(), PermissionLevel::Execute);
     assert!(erased.external_effect());
     assert_eq!(erased.timeout_policy(&Value::Null), ToolTimeout::Unbounded);
