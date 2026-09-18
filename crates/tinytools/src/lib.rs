@@ -25,6 +25,8 @@
 //! - [`spec`] — [`ToolSpec`], the declaration a model is shown.
 //! - [`permission`] — [`PermissionLevel`], the privilege ladder.
 //! - [`classification`] — [`ToolScope`] and [`ToolCategory`].
+//! - [`policy`] — [`ToolPolicy`] plus declarative runtime, access,
+//!   side-effect, and display metadata.
 //! - [`call`] — [`ToolCallOptions`] and [`ToolTimeout`], the per-invocation
 //!   inputs that are not arguments.
 //! - [`context`] — [`ToolRunContext`], the narrow seam onto a live run.
@@ -101,6 +103,7 @@ pub mod classification;
 pub mod context;
 pub mod naming;
 pub mod permission;
+pub mod policy;
 pub mod result;
 pub mod spec;
 pub mod tool;
@@ -114,6 +117,9 @@ pub use naming::{
     humanize_tool_name,
 };
 pub use permission::PermissionLevel;
+pub use policy::{
+    ToolAccess, ToolDisplay, ToolPolicy, ToolRuntime, ToolSideEffects, WorkspaceAccess,
+};
 pub use result::{ToolContent, ToolResult};
 pub use spec::ToolSpec;
 pub use tool::{Tool, ToolExposure};

@@ -17,11 +17,11 @@ fn timeout_defaults_to_inherit() {
     assert_eq!(ToolTimeout::default(), ToolTimeout::Inherit);
     assert!(ToolTimeout::Inherit.is_inherit());
     assert!(!ToolTimeout::Unbounded.is_inherit());
-    assert!(!ToolTimeout::Secs(30).is_inherit());
+    assert!(!ToolTimeout::Millis(30).is_inherit());
 }
 
 #[test]
 fn timeout_variants_are_distinct() {
     assert_ne!(ToolTimeout::Inherit, ToolTimeout::Unbounded);
-    assert_ne!(ToolTimeout::Secs(1), ToolTimeout::Secs(2));
+    assert_ne!(ToolTimeout::Millis(1), ToolTimeout::Millis(2));
 }

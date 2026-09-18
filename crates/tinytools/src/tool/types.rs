@@ -10,6 +10,7 @@ use crate::classification::{ToolCategory, ToolScope};
 use crate::context::ToolRunContext;
 use crate::naming::{context_detail_from_args, humanize_tool_name};
 use crate::permission::PermissionLevel;
+use crate::policy::ToolPolicy;
 use crate::result::ToolResult;
 use crate::spec::ToolSpec;
 
@@ -123,6 +124,16 @@ pub trait Tool: Send + Sync {
         self.execute_with_options(args, options).await
     }
 
+    /// Complete declarative safety, runtime, access, and display metadata.
+    ///
+    /// The default is deliberately unclassified. A host that admits tools
+    /// fail-closed can reject it until a tool author provides an explicit
+    /// declaration; this crate only carries the declaration and never makes
+    /// that admission decision.
+    fn policy(&self) -> ToolPolicy {
+        ToolPolicy::default()
+    }
+
     /// Whether this tool can produce a markdown rendering when
     /// [`ToolCallOptions::prefer_markdown`] is set.
     ///
@@ -219,7 +230,11 @@ pub trait Tool: Send + Sync {
 
     /// How the host should bound this invocation in wall-clock time.
     fn timeout_policy(&self, _args: &Value) -> ToolTimeout {
-        ToolTimeout::Inherit
+        let runtime = self.policy().runtime;
+        match (runtime.timeout, runtime.timeout_ms) {
+            (ToolTimeout::Inherit, Some(timeout_ms)) => ToolTimeout::Millis(timeout_ms),
+            (timeout, _) => timeout,
+        }
     }
 
     /// Host-defined metadata this tool carries, for a host that needs to
@@ -258,7 +273,10 @@ pub trait Tool: Send + Sync {
     /// override with a curated phrase so a row never reads as raw
     /// `snake_case`.
     fn display_label(&self, _args: &Value) -> Option<String> {
-        Some(humanize_tool_name(self.name()))
+        self.policy()
+            .display
+            .label
+            .or_else(|| Some(humanize_tool_name(self.name())))
     }
 
     /// The specific argument for this call — the path, address, command or
@@ -269,6 +287,9 @@ pub trait Tool: Send + Sync {
     /// nearly every tool. Override when the meaningful argument sits under an
     /// unusual key.
     fn display_detail(&self, args: &Value) -> Option<String> {
-        context_detail_from_args(args)
+        self.policy()
+            .display
+            .detail
+            .or_else(|| context_detail_from_args(args))
     }
 }

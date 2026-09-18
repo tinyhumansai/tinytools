@@ -13,8 +13,8 @@ use serde_json::{Value, json};
 
 use super::Tool;
 use crate::{
-    PermissionLevel, ToolCallOptions, ToolCategory, ToolResult, ToolRunContext, ToolScope,
-    ToolTimeout,
+    PermissionLevel, ToolCallOptions, ToolCategory, ToolDisplay, ToolPolicy, ToolResult,
+    ToolRunContext, ToolRuntime, ToolScope, ToolTimeout,
 };
 
 /// A tool implementing only the four required methods, so every default is
@@ -100,6 +100,53 @@ fn the_declaration_defaults_are_the_conservative_answer() {
     assert_eq!(tool.timeout_policy(&Value::Null), ToolTimeout::Inherit);
     assert!(tool.host_extension().is_none());
     assert!(tool.host_call_extension(&Value::Null).is_none());
+    assert_eq!(tool.policy(), ToolPolicy::default());
+}
+
+/// A tool whose complete declaration lives in the canonical policy vocabulary.
+struct DeclaredTool;
+
+#[async_trait]
+impl Tool for DeclaredTool {
+    fn name(&self) -> &str {
+        "declared_tool"
+    }
+
+    fn description(&self) -> &str {
+        "A tool with a policy declaration"
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({ "type": "object" })
+    }
+
+    async fn execute(&self, _args: Value) -> anyhow::Result<ToolResult> {
+        Ok(ToolResult::success("done"))
+    }
+
+    fn policy(&self) -> ToolPolicy {
+        ToolPolicy::read_only()
+            .with_runtime(ToolRuntime {
+                timeout_ms: Some(250),
+                ..ToolRuntime::default()
+            })
+            .with_display(ToolDisplay::label("Inspect workspace").with_detail("repository"))
+    }
+}
+
+#[test]
+fn policy_declaration_drives_the_default_timeout_and_display_metadata() {
+    let tool = DeclaredTool;
+    assert!(tool.policy().classified);
+    assert_eq!(tool.timeout_policy(&Value::Null), ToolTimeout::Millis(250));
+    assert_eq!(
+        tool.display_label(&Value::Null).as_deref(),
+        Some("Inspect workspace")
+    );
+    assert_eq!(
+        tool.display_detail(&Value::Null).as_deref(),
+        Some("repository")
+    );
 }
 
 #[test]
