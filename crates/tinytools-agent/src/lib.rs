@@ -47,11 +47,6 @@
 //! the results it is shown, the transcript it is replayed — is not
 //! host-specific, and lives in [`dialect`].
 
-#![cfg_attr(
-    not(feature = "tracing"),
-    allow(dead_code, unused_imports, unused_variables)
-)]
-
 pub mod dialect;
 pub(crate) mod parse;
 pub(crate) mod pformat;

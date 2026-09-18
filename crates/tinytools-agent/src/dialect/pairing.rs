@@ -29,6 +29,7 @@ use super::types::TranscriptEntry;
 
 /// Return the entries safe to serialize, in order, dropping any tool cycle that
 /// is not complete.
+#[must_use]
 pub fn pair_tool_cycles(history: &[TranscriptEntry]) -> Vec<&TranscriptEntry> {
     let mut kept_indices: Vec<usize> = Vec::with_capacity(history.len());
 

@@ -710,15 +710,6 @@ pub fn parse_glm_style_tool_calls(text: &str) -> Vec<(String, serde_json::Value,
                 }
             }
         }
-
-        // Plain URL
-        if let Some(command) = build_curl_command(line) {
-            calls.push((
-                "shell".to_string(),
-                serde_json::json!({"command": command}),
-                Some(line.to_string()),
-            ));
-        }
     }
 
     calls
@@ -982,6 +973,7 @@ pub fn parse_tool_calls(response: &str) -> (String, Vec<ParsedToolCall>) {
 ///   `{"name":..}` body, or an unregistered tool name) leaves
 ///   [`pformat::parse_call`](super::pformat::parse_call)
 ///   returning `None`, so the canonical JSON entry is used unchanged.
+#[must_use]
 pub fn parse_tool_calls_with_pformat(
     response: &str,
     registry: &super::pformat::PFormatRegistry,
@@ -998,8 +990,7 @@ pub fn parse_tool_calls_with_pformat(
     }
 
     // Walk the tags ourselves, preferring a P-Format body per tag and falling
-    // back to parsing the tag body directly with the JSON logic to preserve
-    // all calls produced from multi-call JSON bodies and markdown/GLM grammars.
+    // back to the JSON logic so calls retain their source order.
     let mut combined: Vec<ParsedToolCall> = Vec::new();
     let mut remaining = response;
 
@@ -1035,13 +1026,10 @@ pub fn parse_tool_calls_with_pformat(
             // Deliberately the *permissive* (alias-honouring) path rather than
             // `parse_tool_calls`: a `<tool_call>` tag is an explicit tool-call
             // marker, so the `args`/`parameters`/`input` aliases apply here.
-            // `parse_tool_calls` forbids them for a bare top-level object, so
-            // routing through it would silently drop an aliased tagged call.
             let mut from_body: Vec<ParsedToolCall> = Vec::new();
             for value in extract_json_values(body) {
                 from_body.extend(parse_tool_calls_from_json_value(&value));
             }
-
             // A tag body need not be JSON at all. GLM emits its own grammar
             // (`shell/command>ls -la`), and once ANY tag in the response yields
             // a p-format call this walk never falls back to the canonical
@@ -1057,7 +1045,6 @@ pub fn parse_tool_calls_with_pformat(
                     },
                 ));
             }
-
             combined.extend(from_body);
         }
 
@@ -1068,6 +1055,19 @@ pub fn parse_tool_calls_with_pformat(
         // No `<tool_call>` tag recovered a positional call — the canonical
         // result already covers JSON/XML/markdown/GLM grammars.
         return (narrative, json_calls);
+    }
+
+    // The literal-tag pass cannot visit provider-specific structures such as
+    // Claude's attribute-form `<invoke name="…">`. Preserve canonical calls
+    // it did not reconstruct, so mixed responses never lose an invocation.
+    for canonical in json_calls {
+        if !combined.iter().any(|call| {
+            call.name == canonical.name
+                && call.arguments == canonical.arguments
+                && call.id == canonical.id
+        }) {
+            combined.push(canonical);
+        }
     }
 
     crate::telemetry::debug!(

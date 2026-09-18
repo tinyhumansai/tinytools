@@ -259,6 +259,29 @@ fn pformat_wrapper_returns_canonical_result_when_no_positional_call_is_recovered
 }
 
 #[test]
+fn pformat_wrapper_retains_a_claude_invoke_alongside_a_positional_call() {
+    let mut registry = PFormatRegistry::new();
+    registry.insert(
+        "echo".into(),
+        PFormatToolParams::from_schema(&serde_json::json!({
+            "type": "object",
+            "properties": { "value": { "type": "string" } }
+        })),
+    );
+    let (_, calls) = parse_tool_calls_with_pformat(
+        concat!(
+            "<tool_call>echo[0|hi]</tool_call>",
+            "<invoke name=\"other\"><parameter name=\"x\">y</parameter></invoke>"
+        ),
+        &registry,
+    );
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].name, "echo");
+    assert_eq!(calls[1].name, "other");
+    assert_eq!(calls[1].arguments, serde_json::json!({"x": "y"}));
+}
+
+#[test]
 fn glm_helpers_parse_aliases_urls_and_commands() {
     assert_eq!(map_glm_tool_alias("browser_open"), "shell");
     assert_eq!(map_glm_tool_alias("http"), "http_request");
@@ -278,10 +301,10 @@ fn glm_helpers_parse_aliases_urls_and_commands() {
     let calls = parse_glm_style_tool_calls(
         "browser_open/url>https://example.com\nhttp_request/url>https://api.example.com\nplain text\nhttps://rust-lang.org",
     );
-    assert_eq!(calls.len(), 3);
+    assert_eq!(calls.len(), 2);
     assert_eq!(calls[0].0, "shell");
     assert_eq!(calls[1].0, "http_request");
-    assert_eq!(calls[2].0, "shell");
+    assert!(parse_glm_style_tool_calls("https://rust-lang.org").is_empty());
 }
 
 #[test]

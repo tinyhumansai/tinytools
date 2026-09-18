@@ -26,6 +26,7 @@ use tinytools::ToolSpec;
 const UNKNOWN_CALL_ID: &str = "unknown";
 
 /// Type name of a JSON value, for logging without exposing its contents.
+#[cfg_attr(not(feature = "tracing"), allow(dead_code))]
 pub(super) fn value_kind(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
@@ -52,6 +53,8 @@ impl ToolDialect for NativeDialect {
                 arguments: match serde_json::from_str::<Value>(&call.arguments) {
                     Ok(value @ Value::Object(_)) => value,
                     Ok(other) => {
+                        #[cfg(not(feature = "tracing"))]
+                        let _ = &other;
                         crate::telemetry::warn!(
                             tool = %call.name,
                             kind = value_kind(&other),
@@ -60,6 +63,8 @@ impl ToolDialect for NativeDialect {
                         Value::Object(serde_json::Map::new())
                     }
                     Err(error) => {
+                        #[cfg(not(feature = "tracing"))]
+                        let _ = &error;
                         crate::telemetry::warn!(
                             tool = %call.name,
                             %error,
