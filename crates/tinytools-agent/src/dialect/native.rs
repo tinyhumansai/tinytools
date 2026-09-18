@@ -26,7 +26,7 @@ use tinytools::ToolSpec;
 const UNKNOWN_CALL_ID: &str = "unknown";
 
 /// Type name of a JSON value, for logging without exposing its contents.
-fn value_kind(value: &Value) -> &'static str {
+pub(super) fn value_kind(value: &Value) -> &'static str {
     match value {
         Value::Null => "null",
         Value::Bool(_) => "bool",

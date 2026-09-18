@@ -1,6 +1,6 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 use super::*;
 use crate::{PFormatRegistry, build_registry};
@@ -56,6 +56,98 @@ fn native_call(id: &str, name: &str, arguments: &str) -> NativeToolCall {
         arguments: arguments.to_string(),
         extra_content: None,
     }
+}
+
+#[test]
+fn transcript_vocabulary_builders_preserve_roles_and_defaults() {
+    assert_eq!(DialectRole::System.as_str(), "system");
+    assert_eq!(DialectRole::User.as_str(), "user");
+    assert_eq!(DialectRole::Assistant.as_str(), "assistant");
+    assert_eq!(DialectRole::Tool.as_str(), "tool");
+
+    assert_eq!(DialectMessage::system("s").role, DialectRole::System);
+    assert_eq!(DialectMessage::user("u").role, DialectRole::User);
+    assert_eq!(DialectMessage::assistant("a").role, DialectRole::Assistant);
+    assert_eq!(DialectMessage::tool("t").role, DialectRole::Tool);
+    assert_eq!(DialectResponse::default().text_or_empty(), "");
+}
+
+#[test]
+fn native_dialect_covers_non_object_values_fallback_and_protocol_metadata() {
+    let dialect = NativeDialect;
+    assert_eq!(native::value_kind(&Value::Null), "null");
+    assert_eq!(native::value_kind(&json!(true)), "bool");
+    assert_eq!(native::value_kind(&json!(3)), "number");
+    assert_eq!(native::value_kind(&json!("word")), "string");
+    assert_eq!(native::value_kind(&json!([])), "array");
+    assert_eq!(native::value_kind(&json!({})), "object");
+    for arguments in ["null", "true", "3", "\"word\"", "[]"] {
+        let (_, calls) = dialect.parse_response(&DialectResponse {
+            text: None,
+            tool_calls: vec![native_call("call", "lookup", arguments)],
+        });
+        assert_eq!(calls[0].arguments, json!({}));
+    }
+    let (_, calls) = dialect.parse_response(&DialectResponse {
+        text: None,
+        tool_calls: vec![native_call("call", "lookup", "not json")],
+    });
+    assert_eq!(calls[0].arguments, json!({}));
+
+    let (text, calls) = dialect.parse_response(&response(
+        "<tool_call>{\"name\":\"lookup\",\"arguments\":{}}</tool_call>",
+    ));
+    assert_eq!(
+        text,
+        "<tool_call>{\"name\":\"lookup\",\"arguments\":{}}</tool_call>"
+    );
+    assert_eq!(calls.len(), 1);
+
+    let (text, calls) = dialect.parse_response(&response("narrative only"));
+    assert_eq!(text, "narrative only");
+    assert!(calls.is_empty());
+    let (text, calls) = dialect.parse_response(&response(
+        "narrative <tool_call>{\"name\":\"lookup\",\"arguments\":{}}</tool_call>",
+    ));
+    assert_eq!(text, "narrative");
+    assert_eq!(calls.len(), 1);
+
+    assert!(
+        dialect
+            .prompt_instructions(&[])
+            .contains("native tool-calling")
+    );
+    assert!(dialect.should_send_tool_specs());
+    assert_eq!(dialect.tool_call_format(), ToolCallFormat::Native);
+    let results = one(dialect.format_results(&[ToolOutcome::ok("lookup", "result")]));
+    assert!(
+        matches!(results, TranscriptEntry::ToolResults(entries) if entries[0].tool_call_id == "unknown")
+    );
+}
+
+#[test]
+fn pformat_dialect_shared_registry_delegates_all_text_operations() {
+    let registry = std::sync::Arc::new(build_registry([(
+        "get_weather",
+        weather_schema().parameters,
+    )]));
+    let dialect = PFormatDialect::from_shared(registry.clone());
+    assert!(std::ptr::eq(dialect.registry(), registry.as_ref()));
+    assert!(dialect.prompt_instructions(&[]).contains("P-Format"));
+    assert!(!dialect.should_send_tool_specs());
+    assert_eq!(dialect.tool_call_format(), ToolCallFormat::PFormat);
+    let (_, calls) =
+        dialect.parse_response(&response("<tool_call>get_weather[0|Paris]</tool_call>"));
+    assert_eq!(calls[0].name, "get_weather");
+    assert!(matches!(
+        dialect.format_results(&[ToolOutcome::ok("weather", "sunny")])[0],
+        TranscriptEntry::Chat(_)
+    ));
+    assert_eq!(
+        dialect.to_provider_messages(&[TranscriptEntry::Chat(DialectMessage::user("hi"))])[0]
+            .content,
+        "hi"
+    );
 }
 
 #[test]

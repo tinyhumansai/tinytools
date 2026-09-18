@@ -167,6 +167,98 @@ fn tag_and_json_extractors_cover_common_edge_cases() {
 }
 
 #[test]
+fn invoke_attribute_blocks_preserve_typed_parameters_and_reject_malformed_markup() {
+    let source = concat!(
+        "before <invoke name=\"run\">",
+        "<parameter name=\"number\">42</parameter>",
+        "<parameter name=\"flag\">true</parameter>",
+        "<parameter name=\"empty\"> </parameter>",
+        "<parameter name=\"\">ignored</parameter></invoke> after"
+    );
+    let (text, calls) = parse_tool_calls(source);
+    assert_eq!(text, "before\nafter");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "run");
+    assert_eq!(calls[0].arguments["number"], 42);
+    assert_eq!(calls[0].arguments["flag"], true);
+    assert_eq!(calls[0].arguments["empty"], "");
+
+    let malformed = "lead <invoke name=\"broken\"><parameter name=\"x\">1</parameter>";
+    let (text, calls) = parse_tool_calls(malformed);
+    assert_eq!(
+        text,
+        "lead\n<invoke name=\"broken\"><parameter name=\"x\">1</parameter>"
+    );
+    assert!(calls.is_empty());
+    assert!(find_invoke_attr_tag("<invoke>plain</invoke> <invoke x=\"1\">").is_some());
+}
+
+#[test]
+fn extraction_helpers_cover_invalid_and_incomplete_inputs() {
+    assert!(extract_first_json_value_with_end("no json here").is_none());
+    assert_eq!(strip_leading_close_tags(" </broken"), "");
+    assert!(extract_json_values("").is_empty());
+    assert!(extract_json_values("{not json} [still bad]").is_empty());
+    assert!(find_json_end("{\"escaped\":\"\\\\\"}\"}tail").is_some());
+    assert!(find_json_end("{\"unfinished\": true").is_none());
+}
+
+#[test]
+fn glm_parser_covers_json_payloads_invalid_urls_and_plain_commands() {
+    let calls = parse_glm_style_tool_calls(concat!(
+        "\n",
+        "custom/{\"answer\":42}\n",
+        "shell/url>not-a-url\n",
+        "shell/command>https://example.com/has space\n",
+        "shell/command>echo hi\n",
+        "not a url"
+    ));
+    assert_eq!(calls.len(), 3);
+    assert_eq!(calls[0].0, "custom");
+    assert_eq!(calls[0].1, serde_json::json!({"answer": 42}));
+    assert_eq!(
+        calls[1].1,
+        serde_json::json!({"command": "https://example.com/has space"})
+    );
+    assert_eq!(calls[2].1, serde_json::json!({"command": "echo hi"}));
+}
+
+#[test]
+fn parser_keeps_unclosed_and_malformed_tag_text_without_dispatching_it() {
+    let malformed = "before <tool_call>not-json</tool_call> after";
+    let (text, calls) = parse_tool_calls(malformed);
+    assert_eq!(text, "before\nafter");
+    assert!(calls.is_empty());
+
+    let unclosed = "before <toolcall>{\"name\":\"echo\",\"arguments\":{}}";
+    let (text, calls) = parse_tool_calls(unclosed);
+    assert_eq!(text, "before");
+    assert_eq!(calls.len(), 1);
+
+    let missing_close = "before <tool-call>not-json";
+    let (text, calls) = parse_tool_calls(missing_close);
+    assert_eq!(text, "before\n<tool-call>not-json");
+    assert!(calls.is_empty());
+}
+
+#[test]
+fn pformat_wrapper_returns_canonical_result_when_no_positional_call_is_recovered() {
+    let empty = PFormatRegistry::new();
+    let (text, calls) = parse_tool_calls_with_pformat("shell/command>echo hi", &empty);
+    assert!(text.is_empty());
+    assert_eq!(calls.len(), 1);
+
+    let mut registry = PFormatRegistry::new();
+    registry.insert(
+        "echo".into(),
+        PFormatToolParams::from_schema(&serde_json::json!({"type":"object"})),
+    );
+    let (text, calls) = parse_tool_calls_with_pformat("plain text", &registry);
+    assert_eq!(text, "plain text");
+    assert!(calls.is_empty());
+}
+
+#[test]
 fn glm_helpers_parse_aliases_urls_and_commands() {
     assert_eq!(map_glm_tool_alias("browser_open"), "shell");
     assert_eq!(map_glm_tool_alias("http"), "http_request");
