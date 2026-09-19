@@ -18,6 +18,9 @@
 
 use std::ops::Range;
 
+#[cfg(test)]
+mod test;
+
 /// Info-string languages that mark a fence as a tool call rather than a code
 /// example.
 pub const TOOL_CALL_LANGUAGES: &[&str] =
