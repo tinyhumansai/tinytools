@@ -196,14 +196,46 @@ pub fn strip_code_fence(raw: &str) -> &str {
         .map_or(trimmed, str::trim)
 }
 
-/// Removes every [`TEMPLATE_MARKERS`] occurrence.
+/// Removes every [`TEMPLATE_MARKERS`] occurrence **outside JSON string
+/// literals**.
+///
+/// A blind text-level replace would also strike a marker that is legitimate
+/// string *data* — `{"text":"<tool_call>hi</tool_call>"}` is a call whose
+/// argument happens to quote the marker, and stripping it there would
+/// silently corrupt the value the tool receives. This walks the text
+/// tracking whether it is inside a `"…"` span (honoring `\"` escapes) and
+/// only strips a marker match while outside one.
 #[must_use]
 pub fn strip_template_markers(raw: &str) -> String {
-    let mut out = raw.to_string();
-    for marker in TEMPLATE_MARKERS {
-        if out.contains(marker) {
-            out = out.replace(marker, "");
+    let mut out = String::with_capacity(raw.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut cursor = 0usize;
+    while cursor < raw.len() {
+        let rest = &raw[cursor..];
+        if !in_string
+            && let Some(marker) = TEMPLATE_MARKERS.iter().find(|marker| rest.starts_with(*marker))
+        {
+            cursor += marker.len();
+            continue;
         }
+        // `cursor` only ever advances by a marker's byte length (ASCII, so
+        // always a char boundary) or by one full char below, so it is
+        // always a char boundary here too.
+        let ch = rest.chars().next().unwrap_or_default();
+        out.push(ch);
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+        } else if ch == '"' {
+            in_string = true;
+        }
+        cursor += ch.len_utf8();
     }
     out
 }
