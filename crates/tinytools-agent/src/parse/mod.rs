@@ -9,9 +9,9 @@
 //! # How a response is read
 //!
 //! 1. If the **whole** response is one JSON value, it is read as a call
-//!    envelope ([`grammar::bare_json`]) and nothing else runs.
+//!    envelope (the bare-JSON grammar) and nothing else runs.
 //! 2. Otherwise the text is scanned left to right. At each step every
-//!    [`grammar::Grammar`] reports its next block; the earliest one wins, its
+//!    grammar reports its next block; the earliest one wins, its
 //!    calls are collected, and the scan resumes past it. Text between blocks
 //!    is the narrative. Blocks inside a [`protected`] code fence are skipped.
 //! 3. If the scan found nothing, the GLM line grammar is tried on the

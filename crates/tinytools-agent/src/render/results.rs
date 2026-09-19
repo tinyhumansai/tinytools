@@ -17,8 +17,8 @@
 //! it early (CWE-74). The two get different rules because they land in
 //! different places, and the difference is the point:
 //!
-//! * a **name** is an attribute value, so [`escape_attribute`] escapes the lot;
-//! * an **output** is the body, so [`neutralize_protocol_tags`] rewrites only
+//! * a **name** is an attribute value, so `escape_attribute` escapes the lot;
+//! * an **output** is the body, so `neutralize_protocol_tags` rewrites only
 //!   the protocol tag openers and lets everything else through byte-for-byte.
 //!
 //! Escaping the body wholesale is the obvious implementation and the wrong one:
@@ -162,8 +162,8 @@ fn neutralize_protocol_tags(value: &str) -> Cow<'_, str> {
 ///
 /// Both the name and the output are tool-controlled, and each gets the rule
 /// that fits where it lands: the name is an attribute value, so it is fully
-/// escaped ([`escape_attribute`]); the output is the body, so only protocol
-/// tag openers are neutralized ([`neutralize_protocol_tags`]) and the rest
+/// escaped (`escape_attribute`); the output is the body, so only protocol
+/// tag openers are neutralized (`neutralize_protocol_tags`) and the rest
 /// reaches the model byte-for-byte.
 #[must_use]
 pub fn format_results(results: &[ToolOutcome]) -> Vec<TranscriptEntry> {

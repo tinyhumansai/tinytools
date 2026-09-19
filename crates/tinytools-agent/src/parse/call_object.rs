@@ -109,7 +109,7 @@ pub(crate) fn read_calls(
     calls
 }
 
-/// Public, marker-context form of [`read_call`].
+/// Reads one call object reached through an explicit marker.
 #[must_use]
 pub fn parse_tool_call_value(value: &Value) -> Option<ParsedToolCall> {
     read_call(
@@ -120,7 +120,7 @@ pub fn parse_tool_call_value(value: &Value) -> Option<ParsedToolCall> {
     )
 }
 
-/// Public, marker-context form of [`read_calls`].
+/// Reads every call in a value reached through an explicit marker.
 #[must_use]
 pub fn parse_tool_calls_from_json_value(value: &Value) -> Vec<ParsedToolCall> {
     read_calls(
