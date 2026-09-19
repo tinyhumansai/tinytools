@@ -173,6 +173,30 @@ fn mistral_marker_with_no_call_yet_is_held_while_streaming() {
 }
 
 #[test]
+fn mistral_v11_second_call_split_mid_args_bracket_is_not_lost() {
+    // The split falls after the second call's opening `[`, inside the
+    // `[ARGS]` marker itself rather than inside its name — a stream
+    // fragment boundary a naive name-only predicate does not recognize as
+    // still-ambiguous.
+    use crate::stream::StreamScrubber;
+
+    let mut s = StreamScrubber::new();
+    let first = s.feed("[TOOL_CALLS]a[ARGS]{}");
+    assert!(first.calls.is_empty(), "must hold until disambiguated");
+    let second = s.feed("b[");
+    assert!(second.calls.is_empty(), "must still hold: {second:?}");
+    let third = s.feed("ARGS]{}");
+    assert!(
+        third.calls.is_empty(),
+        "the block ends exactly at the fragment boundary, still ambiguous: {third:?}"
+    );
+    let flushed = s.flush();
+    assert_eq!(flushed.calls.len(), 2);
+    assert_eq!(flushed.calls[0].name, "a");
+    assert_eq!(flushed.calls[1].name, "b");
+}
+
+#[test]
 fn mistral_v11_second_call_split_across_fragments_is_not_lost() {
     // The v11 form lets a second call follow directly with no fresh
     // `[TOOL_CALLS]` marker. A naive streamer that finalizes the block the
