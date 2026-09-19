@@ -108,6 +108,7 @@ fn policy_round_trips_through_its_stable_json_shape() {
                 "cancelable": false,
                 "sandbox": "required",
                 "streaming": false,
+                "replay": "never",
             },
             "access": {
                 "workspace": "any",
