@@ -220,7 +220,7 @@ fn legacy_runtime_json_without_replay_defaults_to_never() {
         "timeout": { "mode": "inherit" },
         "idempotent": false,
         "cancelable": false,
-        "sandbox": "none",
+        "sandbox": "disabled",
         "streaming": false
     }"#;
     let decoded: ToolRuntime = serde_json::from_str(literal).expect("deserializable");
