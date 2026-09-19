@@ -2,7 +2,9 @@
 
 mod types;
 
-pub use types::{ToolContent, ToolResult};
+pub use types::{
+    FileData, ImageData, ToolContent, ToolControl, ToolErrorKind, ToolResult,
+};
 
 #[cfg(test)]
 mod test;
