@@ -76,6 +76,22 @@ impl Grammar for Mistral {
             cursor += args_rel + ARGS.len() + consumed;
         }
         if !calls.is_empty() {
+            // The v11 form allows a second call to follow directly with no
+            // fresh `[TOOL_CALLS]` marker (`NAME[ARGS]{…}NAME2[ARGS]{…}`).
+            // If the buffered text ends right where the trailing bytes
+            // could still grow into another such name, a stream fragment
+            // has not necessarily finished the block — finalizing now would
+            // drop the continuation call the moment it arrives split across
+            // a fragment boundary. Hold the whole block until either more
+            // text disambiguates it or the stream ends.
+            let could_continue = mode == ScanMode::Stream
+                && after[cursor..]
+                    .trim_start()
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
+            if could_continue {
+                return Probe::Pending { start };
+            }
             return Probe::Found(Block {
                 start,
                 end: body_start + cursor,
