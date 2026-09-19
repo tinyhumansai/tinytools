@@ -121,3 +121,17 @@ impl Grammar for Mistral {
         &["[TOOL_CALLS]"]
     }
 }
+
+/// Whether `rest` (the text left over after the last complete v11 call, or
+/// the whole body when no call has been read yet) is still consistent with
+/// growing into another `NAME[ARGS]` pair: a run of name characters,
+/// optionally followed by a proper prefix of the `[ARGS]` marker.
+/// `NAME[ARGS]` itself never reaches this check — the caller only calls it
+/// once `rest.find(ARGS)` has already failed.
+fn could_be_v11_continuation(rest: &str) -> bool {
+    let trimmed = rest.trim_start();
+    let name_len = trimmed
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'))
+        .unwrap_or(trimmed.len());
+    ARGS.starts_with(&trimmed[name_len..])
+}
