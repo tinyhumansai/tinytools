@@ -214,7 +214,9 @@ pub fn strip_template_markers(raw: &str) -> String {
     while cursor < raw.len() {
         let rest = &raw[cursor..];
         if !in_string
-            && let Some(marker) = TEMPLATE_MARKERS.iter().find(|marker| rest.starts_with(*marker))
+            && let Some(marker) = TEMPLATE_MARKERS
+                .iter()
+                .find(|marker| rest.starts_with(*marker))
         {
             cursor += marker.len();
             continue;

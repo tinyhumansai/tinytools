@@ -63,7 +63,12 @@ impl Grammar for Harmony {
                 // Batch: the payload runs to the end of the text.
                 return found(start, text.len(), &name, after);
             };
-            return found(start, payload_start + term_end, &name, &after[..payload_end]);
+            return found(
+                start,
+                payload_start + term_end,
+                &name,
+                &after[..payload_end],
+            );
         }
         Probe::None
     }
@@ -81,7 +86,9 @@ fn absorb_start_prefix(text: &str, idx: usize) -> usize {
     let Some(prefix_start) = idx.checked_sub(START_PREFIX.len()) else {
         return idx;
     };
-    if text.is_char_boundary(prefix_start) && text[prefix_start..idx].eq_ignore_ascii_case(START_PREFIX) {
+    if text.is_char_boundary(prefix_start)
+        && text[prefix_start..idx].eq_ignore_ascii_case(START_PREFIX)
+    {
         prefix_start
     } else {
         idx

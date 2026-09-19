@@ -158,7 +158,10 @@ fn a_namespaced_invoke_opener_split_before_its_closing_bracket_is_held() {
     // structurally rather than by literal prefix matching.
     let mut s = StreamScrubber::new();
     let first = s.feed("<atem:invoke name=\"read\"");
-    assert_eq!(first.text, "", "an unterminated namespaced opener must be held");
+    assert_eq!(
+        first.text, "",
+        "an unterminated namespaced opener must be held"
+    );
     assert!(first.calls.is_empty());
 
     let second = s.feed("><parameter name=\"path\">a</parameter></atem:invoke>");
@@ -174,7 +177,10 @@ fn a_sentinel_split_on_an_unlisted_bar_underscore_combination_is_held() {
     // of the two combinations the fixed opener list used to carry.
     let mut s = StreamScrubber::new();
     let first = s.feed("<｜tool_");
-    assert_eq!(first.text, "", "an unlisted bar/separator split must be held");
+    assert_eq!(
+        first.text, "",
+        "an unlisted bar/separator split must be held"
+    );
     assert!(first.calls.is_empty());
 
     let second =
