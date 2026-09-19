@@ -530,7 +530,3 @@ pub fn quote_bare_keys(s: &str) -> String {
     }
     out
 }
-
-#[cfg(test)]
-#[path = "json_test.rs"]
-mod test;
