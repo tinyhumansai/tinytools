@@ -85,11 +85,15 @@ fn kimi_argument_begin_with_no_name_before_it_is_not_a_call() {
 
 #[test]
 fn kimi_name_keeps_a_non_numeric_colon_suffix() {
+    // The generic post-parse name repair also trims at a bare colon (the
+    // Kimi index separator `:0`), so a known tool that legitimately
+    // contains one is required to observe that `kimi_name` itself keeps a
+    // non-numeric suffix rather than treating it as an index.
     let response =
         "<|tool_call_begin|>functions.foo:bar<|tool_call_argument_begin|>{}<|tool_call_end|>";
-    let (_, calls) = parse(response);
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].name, "foo:bar");
+    let outcome = parse_known(response, &["foo:bar"]);
+    assert_eq!(outcome.calls.len(), 1);
+    assert_eq!(outcome.calls[0].name, "foo:bar");
 }
 
 #[test]
