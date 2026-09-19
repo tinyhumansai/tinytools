@@ -174,6 +174,7 @@ fn fully_populated_policy_has_a_pinned_json_wire_shape() {
             "sandbox": "required",
             "max_result_bytes": 8192,
             "streaming": true,
+            "replay": "safe",
         },
         "access": {
             "workspace": "scoped",
