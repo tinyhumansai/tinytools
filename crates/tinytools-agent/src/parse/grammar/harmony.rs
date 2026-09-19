@@ -73,6 +73,21 @@ impl Grammar for Harmony {
     }
 }
 
+/// Extends a channel marker's position backward over an immediately
+/// preceding [`START_PREFIX`], so it is dropped along with the call instead
+/// of leaking into the narrative (or, mid-stream, being released before the
+/// scrubber knows a call follows it).
+fn absorb_start_prefix(text: &str, idx: usize) -> usize {
+    let Some(prefix_start) = idx.checked_sub(START_PREFIX.len()) else {
+        return idx;
+    };
+    if text.is_char_boundary(prefix_start) && text[prefix_start..idx].eq_ignore_ascii_case(START_PREFIX) {
+        prefix_start
+    } else {
+        idx
+    }
+}
+
 fn found(start: usize, end: usize, name: &str, payload: &str) -> Probe {
     let arguments = recover_object(payload).unwrap_or_else(|| serde_json::json!({}));
     Probe::Found(Block {
