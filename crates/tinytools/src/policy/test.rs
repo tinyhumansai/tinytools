@@ -2,7 +2,9 @@
 
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
-use super::{ToolAccess, ToolDisplay, ToolPolicy, ToolRuntime, ToolSideEffects, WorkspaceAccess};
+use super::{
+    ToolAccess, ToolDisplay, ToolPolicy, ToolReplay, ToolRuntime, ToolSideEffects, WorkspaceAccess,
+};
 use crate::{SandboxMode, ToolTimeout};
 
 #[test]
