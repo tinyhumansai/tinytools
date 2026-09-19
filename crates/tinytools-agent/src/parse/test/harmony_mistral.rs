@@ -32,6 +32,18 @@ fn harmony_call_with_start_prefix_and_no_terminator_parses_in_batch() {
 }
 
 #[test]
+fn harmony_start_prefix_is_consumed_as_furniture() {
+    // `<|start|>assistant` is documented as furniture that precedes the
+    // first channel of a turn; it must not leak into the narrative.
+    let response =
+        "<|start|>assistant<|channel|>commentary to=functions.read<|message|>{\"path\":\"a\"}<|call|>";
+    let (text, calls) = parse(response);
+    assert!(text.is_empty(), "{text:?}");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "read");
+}
+
+#[test]
 fn harmony_channel_with_target_but_no_message_is_not_a_call_in_batch_mode() {
     // No `<|message|>` ever arrives, so a batch parse cannot know whether a
     // call is coming; the header is left as ordinary text rather than
