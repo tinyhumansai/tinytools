@@ -136,17 +136,3 @@ fn known_tools_repair_streamed_names() {
     let step = s.feed("<tool_call>{\"name\":\"functions.read_file\",\"arguments\":{}}</tool_call>");
     assert_eq!(step.calls[0].name, "read_file");
 }
-
-#[test]
-fn dbg_char_stream() {
-    let full = r#"lead <tool_call>{"name":"a","arguments":{}}</tool_call> mid"#;
-    let mut s = StreamScrubber::new();
-    let mut log = String::new();
-    for c in full.chars() {
-        let step = s.feed(&c.to_string());
-        if !step.calls.is_empty() || !step.text.is_empty() {
-            log.push_str(&format!("{c:?} -> text={:?} calls={} buf={:?}\n", step.text, step.calls.len(), s.buf));
-        }
-    }
-    panic!("{log}");
-}

@@ -233,9 +233,6 @@ pub(crate) fn scan(text: &str, options: &ParseOptions<'_>, mode: ScanMode) -> Sc
                     }
                 }
                 from = block.end.max(block.start + 1).min(text.len());
-                if block.end >= text.len() {
-                    break;
-                }
             }
             Some(Probe::None) => break,
         }

@@ -314,10 +314,12 @@ pub fn balance_closers(s: &str) -> String {
             _ => {}
         }
     }
-    let mut out = s.to_string();
     if in_string {
-        out.push('"');
+        // A value cut off mid-string cannot be completed honestly: guessing
+        // where it ended would hand a tool a silently truncated argument.
+        return s.to_string();
     }
+    let mut out = s.to_string();
     if excess > 0 && excess <= MAX_EXCESS_CLOSERS && stack.is_empty() {
         let mut trimmed = out.trim_end().to_string();
         for _ in 0..excess {

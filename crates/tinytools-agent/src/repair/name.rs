@@ -73,12 +73,20 @@ pub fn resolve(raw: &str, known: &[String]) -> NameResolution {
         return resolved(original, hit);
     }
 
-    for suffix in TOOL_SUFFIXES {
-        if let Some(stem) = unprefixed.strip_suffix(suffix) {
-            let stem_norm = normalize(stem);
-            if let Some(hit) = known.iter().find(|k| normalize(k) == stem_norm) {
-                return resolved(original, hit);
-            }
+    // Class-name suffixes, stripped up to twice (`TodoTool_tool`).
+    let mut stem = unprefixed.to_string();
+    for _ in 0..2 {
+        let Some(shorter) = TOOL_SUFFIXES
+            .iter()
+            .find_map(|suffix| stem.strip_suffix(suffix))
+            .map(str::to_string)
+        else {
+            break;
+        };
+        stem = shorter;
+        let stem_norm = normalize(&stem);
+        if let Some(hit) = known.iter().find(|k| normalize(k) == stem_norm) {
+            return resolved(original, hit);
         }
     }
 
