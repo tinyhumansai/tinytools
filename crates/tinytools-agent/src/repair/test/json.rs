@@ -97,6 +97,18 @@ fn strips_leaked_template_markers() {
 }
 
 #[test]
+fn a_marker_that_is_legitimate_string_data_is_preserved() {
+    // The trailing comma forces the repair ladder to run; a blind
+    // text-level marker strip would corrupt the value from inside its own
+    // quotes instead of only removing marker text that leaked in as
+    // structure.
+    assert_eq!(
+        recover_object(r#"{"text":"<tool_call>hi</tool_call>",}"#),
+        Some(json!({ "text": "<tool_call>hi</tool_call>" }))
+    );
+}
+
+#[test]
 fn strips_a_code_fence() {
     assert_eq!(
         recover_object("```json\n{\"a\":1}\n```"),
