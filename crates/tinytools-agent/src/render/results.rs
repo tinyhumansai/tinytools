@@ -29,7 +29,7 @@
 use std::borrow::Cow;
 use std::fmt::Write as _;
 
-use super::types::{DialectMessage, ToolOutcome, ToolResultEntry, TranscriptEntry};
+use crate::dialect::{DialectMessage, ToolOutcome, ToolResultEntry, TranscriptEntry};
 
 /// Prefix of the synthetic user turn that carries tool results back to a
 /// text-mode model.
@@ -165,7 +165,7 @@ fn neutralize_protocol_tags(value: &str) -> Cow<'_, str> {
 /// escaped ([`escape_attribute`]); the output is the body, so only protocol
 /// tag openers are neutralized ([`neutralize_protocol_tags`]) and the rest
 /// reaches the model byte-for-byte.
-pub(super) fn format_results(results: &[ToolOutcome]) -> Vec<TranscriptEntry> {
+pub fn format_results(results: &[ToolOutcome]) -> Vec<TranscriptEntry> {
     // The overwhelmingly common shape: nothing marked, one framed batch. Kept as
     // its own branch so an unmarked round allocates exactly what it always did.
     if !results.iter().any(|result| result.trusted_verbatim) {
@@ -236,12 +236,12 @@ fn frame_batch(results: &[ToolOutcome]) -> String {
 ///
 /// `text` must be the **raw** model response the text dialect originally
 /// parsed (tags and all), not the narrative-only text
-/// [`ToolDialect::parse_response`](super::ToolDialect::parse_response) returns
+/// [`ToolDialect::parse_response`](crate::dialect::ToolDialect::parse_response) returns
 /// with the `<tool_call>` tags stripped. A host that persists the parsed
 /// narrative into `TranscriptEntry::AssistantToolCalls::text` replays an
 /// assistant turn with no visible call, followed by a `<tool_result>` turn
 /// that answers nothing the model can see.
-pub(super) fn to_provider_messages(history: &[TranscriptEntry]) -> Vec<DialectMessage> {
+pub fn to_provider_messages(history: &[TranscriptEntry]) -> Vec<DialectMessage> {
     history
         .iter()
         .flat_map(|entry| match entry {
