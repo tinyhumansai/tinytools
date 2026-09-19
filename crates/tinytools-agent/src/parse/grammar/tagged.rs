@@ -29,8 +29,7 @@ use regex::Regex;
 use super::{Block, Decoded, Grammar, Probe, ScanMode, find_ci, pending_opener, prefer_pending};
 use crate::parse::call_object::{AliasPolicy, read_calls};
 use crate::parse::json_values::{
-    extract_first_json_value_with_end, extract_json_values, find_json_end,
-    strip_leading_close_tags,
+    extract_first_json_value_with_end, extract_json_values, find_json_end, strip_leading_close_tags,
 };
 use crate::repair::json::{recover_object, strip_code_fence};
 use crate::types::{CallSource, ParseOptions, ParsedToolCall};
@@ -228,7 +227,10 @@ fn next_opener(text: &str, from: usize) -> Option<Opener> {
             // The language must end here (`tool_call` not `tool_calls`), and
             // the body starts on the next line.
             let rest = after.trim_start_matches([' ', '\t']);
-            if let Some(nl) = rest.strip_prefix('\n').or_else(|| rest.strip_prefix("\r\n")) {
+            if let Some(nl) = rest
+                .strip_prefix('\n')
+                .or_else(|| rest.strip_prefix("\r\n"))
+            {
                 consider(
                     &mut best,
                     Opener {
@@ -262,7 +264,11 @@ fn fence_close(after: &str) -> Option<(usize, usize)> {
         TAG_RE
             .as_ref()
             .and_then(|re| re.find(after))
-            .filter(|m| m.as_str()[1..].trim_start_matches(['|', ' ']).starts_with('/'))
+            .filter(|m| {
+                m.as_str()[1..]
+                    .trim_start_matches(['|', ' '])
+                    .starts_with('/')
+            })
             .map(|m| (m.start(), m.end())),
     );
     consider(after.find("</invoke>").map(|i| (i, i + "</invoke>".len())));
@@ -283,7 +289,12 @@ pub(crate) fn decode_body(body: &str, options: &ParseOptions<'_>) -> Vec<ParsedT
     if let Some(recovered) = recover_sentinel_body(body)
         && let Ok(value) = serde_json::from_str::<serde_json::Value>(&recovered)
     {
-        let calls = read_calls(&value, AliasPolicy::Marked, &is_known, CallSource::TaggedJson);
+        let calls = read_calls(
+            &value,
+            AliasPolicy::Marked,
+            &is_known,
+            CallSource::TaggedJson,
+        );
         if !calls.is_empty() {
             return calls;
         }
@@ -304,7 +315,12 @@ pub(crate) fn decode_body(body: &str, options: &ParseOptions<'_>) -> Vec<ParsedT
     }
 
     if let Some(value) = recover_object(unfenced) {
-        let calls = read_calls(&value, AliasPolicy::Marked, &is_known, CallSource::TaggedJson);
+        let calls = read_calls(
+            &value,
+            AliasPolicy::Marked,
+            &is_known,
+            CallSource::TaggedJson,
+        );
         if !calls.is_empty() {
             return calls;
         }

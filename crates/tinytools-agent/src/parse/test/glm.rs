@@ -24,7 +24,10 @@ fn glm_parser_covers_json_payloads_invalid_urls_and_plain_commands() {
     assert_eq!(calls.len(), 3);
     assert_eq!(calls[0].0, "custom");
     assert_eq!(calls[0].1, serde_json::json!({"answer": 42}));
-    assert_eq!(calls[1].1, serde_json::json!({"command": "https://example.com/has space"}));
+    assert_eq!(
+        calls[1].1,
+        serde_json::json!({"command": "https://example.com/has space"})
+    );
     assert_eq!(calls[2].1, serde_json::json!({"command": "echo hi"}));
 }
 

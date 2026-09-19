@@ -55,7 +55,11 @@ pub(crate) fn read_call(
         }
     }
 
-    let name = value.get("name").and_then(Value::as_str).unwrap_or("").trim();
+    let name = value
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
     if name.is_empty() {
         return None;
     }
@@ -108,11 +112,21 @@ pub(crate) fn read_calls(
 /// Public, marker-context form of [`read_call`].
 #[must_use]
 pub fn parse_tool_call_value(value: &Value) -> Option<ParsedToolCall> {
-    read_call(value, AliasPolicy::Marked, &|_| false, CallSource::TaggedJson)
+    read_call(
+        value,
+        AliasPolicy::Marked,
+        &|_| false,
+        CallSource::TaggedJson,
+    )
 }
 
 /// Public, marker-context form of [`read_calls`].
 #[must_use]
 pub fn parse_tool_calls_from_json_value(value: &Value) -> Vec<ParsedToolCall> {
-    read_calls(value, AliasPolicy::Marked, &|_| false, CallSource::TaggedJson)
+    read_calls(
+        value,
+        AliasPolicy::Marked,
+        &|_| false,
+        CallSource::TaggedJson,
+    )
 }

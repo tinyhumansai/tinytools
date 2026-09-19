@@ -35,7 +35,8 @@ fn missing_arguments_default_to_empty_object() {
 
 #[test]
 fn spelling_variants_and_bare_invoke_literal() {
-    let (text, calls) = parse("<invoke>{\"name\":\"echo\",\"arguments\":{\"value\":\"three\"}}</invoke>");
+    let (text, calls) =
+        parse("<invoke>{\"name\":\"echo\",\"arguments\":{\"value\":\"three\"}}</invoke>");
     assert!(text.is_empty());
     assert_eq!(calls.len(), 1);
 
@@ -47,7 +48,8 @@ fn spelling_variants_and_bare_invoke_literal() {
 
 #[test]
 fn attribute_form_and_pipe_variant_open_a_block() {
-    let (cleaned, calls) = parse(r#"<tool_call id="call_0">{"name":"foo","arguments":{"a":1}}</tool_call>"#);
+    let (cleaned, calls) =
+        parse(r#"<tool_call id="call_0">{"name":"foo","arguments":{"a":1}}</tool_call>"#);
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].name, "foo");
     assert!(cleaned.is_empty());
@@ -140,7 +142,8 @@ fn a_tag_body_may_hold_several_calls() {
 #[test]
 fn a_tagged_body_honours_argument_key_aliases() {
     for alias in ["args", "parameters", "params", "input"] {
-        let text = format!(r#"<tool_call>{{"name":"shell","{alias}":{{"command":"ls"}}}}</tool_call>"#);
+        let text =
+            format!(r#"<tool_call>{{"name":"shell","{alias}":{{"command":"ls"}}}}</tool_call>"#);
         let (_, calls) = parse(&text);
         assert_eq!(calls.len(), 1, "{alias}");
         assert_eq!(calls[0].arguments["command"], "ls", "{alias}");
@@ -149,7 +152,8 @@ fn a_tagged_body_honours_argument_key_aliases() {
 
 #[test]
 fn a_tagged_body_with_relaxed_json_is_repaired() {
-    let (_, calls) = parse(r#"<tool_call>{name:"get_weather",arguments:{city:"Paris"}}</tool_call>"#);
+    let (_, calls) =
+        parse(r#"<tool_call>{name:"get_weather",arguments:{city:"Paris"}}</tool_call>"#);
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].arguments["city"], "Paris");
 }
@@ -200,8 +204,10 @@ fn pformat_pipes_in_a_body_are_not_garbled_tags() {
             "required": ["city", "unit"]
         })),
     );
-    let (_, calls) =
-        parse_tool_calls_with_pformat("<tool_call>get_weather[0|London|1|metric]</tool_call>", &registry);
+    let (_, calls) = parse_tool_calls_with_pformat(
+        "<tool_call>get_weather[0|London|1|metric]</tool_call>",
+        &registry,
+    );
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].arguments["city"], "London");
     assert_eq!(calls[0].source, CallSource::PFormat);
@@ -215,7 +221,10 @@ fn kimi_name_brace_body_with_quote_sentinels_parses() {
     let (_text, calls) = parse(garbled);
     assert_eq!(calls.len(), 1, "the garbled Kimi call must be recovered");
     assert_eq!(calls[0].name, "GMAIL_FETCH_EMAILS");
-    assert_eq!(calls[0].arguments["label_ids"], serde_json::json!(["INBOX"]));
+    assert_eq!(
+        calls[0].arguments["label_ids"],
+        serde_json::json!(["INBOX"])
+    );
     assert_eq!(calls[0].arguments["max_results"], 1);
     assert_eq!(calls[0].arguments["verbose"], true);
 }
@@ -251,7 +260,8 @@ fn echo_registry() -> PFormatRegistry {
 
 #[test]
 fn a_pformat_tag_does_not_suppress_a_sibling_glm_tag() {
-    let response = "<tool_call>echo[0|hello]</tool_call>\n<tool_call>shell/command>ls -la</tool_call>";
+    let response =
+        "<tool_call>echo[0|hello]</tool_call>\n<tool_call>shell/command>ls -la</tool_call>";
     let (_narrative, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
     let names: Vec<&str> = calls.iter().map(|c| c.name.as_str()).collect();
     assert_eq!(names, vec!["echo", "shell"]);
@@ -276,7 +286,10 @@ fn a_json_body_is_not_double_counted_by_the_glm_fallback() {
 fn a_tagged_body_with_a_registry_still_honours_argument_key_aliases() {
     let response = "<tool_call>echo[0|hello]</tool_call>\n<tool_call>{\"name\": \"shell\", \"args\": {\"command\": \"ls\"}}</tool_call>";
     let (_narrative, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
-    let shell = calls.iter().find(|c| c.name == "shell").expect("aliased tagged call");
+    let shell = calls
+        .iter()
+        .find(|c| c.name == "shell")
+        .expect("aliased tagged call");
     assert_eq!(shell.arguments["command"], "ls");
 }
 

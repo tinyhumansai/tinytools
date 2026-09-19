@@ -52,9 +52,15 @@ impl Grammar for Mistral {
         let mut cursor = 0usize;
         loop {
             let rest = &after[cursor..];
-            let Some(args_rel) = rest.find(ARGS) else { break };
+            let Some(args_rel) = rest.find(ARGS) else {
+                break;
+            };
             let name = rest[..args_rel].trim();
-            if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.') {
+            if name.is_empty()
+                || !name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+            {
                 break;
             }
             let payload = &rest[args_rel + ARGS.len()..];

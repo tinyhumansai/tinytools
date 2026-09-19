@@ -21,7 +21,8 @@ fn a_call_inside_a_language_fence_is_an_example_not_a_call() {
 
 #[test]
 fn a_call_inside_a_bare_fence_still_parses() {
-    let text = "```\n<tool_call>{\"name\":\"shell\",\"arguments\":{\"command\":\"ls\"}}</tool_call>\n```";
+    let text =
+        "```\n<tool_call>{\"name\":\"shell\",\"arguments\":{\"command\":\"ls\"}}</tool_call>\n```";
     let (_, calls) = parse(text);
     assert_eq!(calls.len(), 1);
 }
@@ -51,29 +52,62 @@ fn names_are_repaired_against_known_tools() {
         &["terminal", "read_file"],
     );
     assert_eq!(outcome.calls[0].name, "terminal");
-    assert!(outcome.diagnostics.iter().any(|d| matches!(d, ParseDiagnostic::NameRepaired { to, .. } if to == "terminal")));
+    assert!(
+        outcome
+            .diagnostics
+            .iter()
+            .any(|d| matches!(d, ParseDiagnostic::NameRepaired { to, .. } if to == "terminal"))
+    );
 
-    let outcome = parse_known("<tool_call>{\"name\":\"functions.read_file\",\"arguments\":{}}</tool_call>", &["read_file"]);
+    let outcome = parse_known(
+        "<tool_call>{\"name\":\"functions.read_file\",\"arguments\":{}}</tool_call>",
+        &["read_file"],
+    );
     assert_eq!(outcome.calls[0].name, "read_file");
-    let outcome = parse_known("<tool_call>{\"name\":\"Read File\",\"arguments\":{}}</tool_call>", &["read_file"]);
+    let outcome = parse_known(
+        "<tool_call>{\"name\":\"Read File\",\"arguments\":{}}</tool_call>",
+        &["read_file"],
+    );
     assert_eq!(outcome.calls[0].name, "read_file");
-    let outcome = parse_known("<tool_call>{\"name\":\"raed_file\",\"arguments\":{}}</tool_call>", &["read_file", "write_file"]);
+    let outcome = parse_known(
+        "<tool_call>{\"name\":\"raed_file\",\"arguments\":{}}</tool_call>",
+        &["read_file", "write_file"],
+    );
     assert_eq!(outcome.calls[0].name, "read_file");
 }
 
 #[test]
 fn an_unknown_name_is_returned_and_flagged() {
-    let outcome = parse_known("<tool_call>{\"name\":\"launch_missiles\",\"arguments\":{}}</tool_call>", &["read_file"]);
+    let outcome = parse_known(
+        "<tool_call>{\"name\":\"launch_missiles\",\"arguments\":{}}</tool_call>",
+        &["read_file"],
+    );
     assert_eq!(outcome.calls.len(), 1);
     assert_eq!(outcome.calls[0].name, "launch_missiles");
-    assert!(matches!(outcome.diagnostics[0], ParseDiagnostic::UnknownTool { .. }));
+    assert!(matches!(
+        outcome.diagnostics[0],
+        ParseDiagnostic::UnknownTool { .. }
+    ));
 }
 
 #[test]
 fn malformed_and_unterminated_blocks_are_reported() {
-    let outcome = parse_known("<tool_call>nope</tool_call> and <tool_call>{\"name\":\"x\"", &[]);
-    assert!(outcome.diagnostics.iter().any(|d| matches!(d, ParseDiagnostic::MalformedBlock { .. })));
-    assert!(outcome.diagnostics.iter().any(|d| matches!(d, ParseDiagnostic::UnterminatedBlock { .. })));
+    let outcome = parse_known(
+        "<tool_call>nope</tool_call> and <tool_call>{\"name\":\"x\"",
+        &[],
+    );
+    assert!(
+        outcome
+            .diagnostics
+            .iter()
+            .any(|d| matches!(d, ParseDiagnostic::MalformedBlock { .. }))
+    );
+    assert!(
+        outcome
+            .diagnostics
+            .iter()
+            .any(|d| matches!(d, ParseDiagnostic::UnterminatedBlock { .. }))
+    );
 }
 
 #[test]
@@ -97,7 +131,10 @@ fn parse_argument_helpers_cover_string_non_string_and_missing_values() {
         parse_arguments_value(Some(&serde_json::json!("{\"value\":1}"))),
         serde_json::json!({ "value": 1 })
     );
-    assert_eq!(parse_arguments_value(Some(&serde_json::json!("not-json"))), serde_json::json!({}));
+    assert_eq!(
+        parse_arguments_value(Some(&serde_json::json!("not-json"))),
+        serde_json::json!({})
+    );
     assert_eq!(
         parse_arguments_value(Some(&serde_json::json!({ "value": 2 }))),
         serde_json::json!({ "value": 2 })
@@ -141,26 +178,39 @@ fn parse_tool_calls_from_json_value_handles_envelopes_arrays_and_singletons() {
 
     // Tagged contexts widen `input` into arguments.
     let answer = serde_json::json!({ "name": "Alice", "input": { "value": "hi" } });
-    assert_eq!(parse_tool_calls_from_json_value(&answer)[0].arguments, serde_json::json!({ "value": "hi" }));
+    assert_eq!(
+        parse_tool_calls_from_json_value(&answer)[0].arguments,
+        serde_json::json!({ "value": "hi" })
+    );
 }
 
 #[test]
 fn json_scanners_cover_common_edge_cases() {
-    let extracted = extract_first_json_value_with_end(" text {\"ok\":true} trailing ").expect("json");
+    let extracted =
+        extract_first_json_value_with_end(" text {\"ok\":true} trailing ").expect("json");
     assert_eq!(extracted.0, serde_json::json!({ "ok": true }));
     assert!(extracted.1 > 0);
     assert!(extract_first_json_value_with_end("no json here").is_none());
 
-    assert_eq!(strip_leading_close_tags(" </tool_call>  </invoke> hi "), "hi ");
+    assert_eq!(
+        strip_leading_close_tags(" </tool_call>  </invoke> hi "),
+        "hi "
+    );
     assert_eq!(strip_leading_close_tags("plain"), "plain");
     assert_eq!(strip_leading_close_tags(" </broken"), "");
 
     let values = extract_json_values("before {\"a\":1} [1,2] after");
-    assert_eq!(values, vec![serde_json::json!({ "a": 1 }), serde_json::json!([1, 2])]);
+    assert_eq!(
+        values,
+        vec![serde_json::json!({ "a": 1 }), serde_json::json!([1, 2])]
+    );
     assert!(extract_json_values("").is_empty());
     assert!(extract_json_values("{not json} [still bad]").is_empty());
 
-    assert_eq!(find_json_end("  {\"a\":\"}\"}tail"), Some("  {\"a\":\"}\"}".len()));
+    assert_eq!(
+        find_json_end("  {\"a\":\"}\"}tail"),
+        Some("  {\"a\":\"}\"}".len())
+    );
     assert_eq!(find_json_end("[1,2,3]"), None);
     assert!(find_json_end("{\"escaped\":\"\\\\\"}\"}tail").is_some());
     assert!(find_json_end("{\"unfinished\": true").is_none());

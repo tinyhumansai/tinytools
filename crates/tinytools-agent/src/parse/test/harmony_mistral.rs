@@ -24,7 +24,8 @@ fn harmony_channel_without_target_is_not_a_call() {
 
 #[test]
 fn harmony_call_with_start_prefix_and_no_terminator_parses_in_batch() {
-    let response = "<|start|>assistant<|channel|>commentary to=functions.read<|message|>{\"path\":\"a\"}";
+    let response =
+        "<|start|>assistant<|channel|>commentary to=functions.read<|message|>{\"path\":\"a\"}";
     let (_, calls) = parse(response);
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].name, "read");
@@ -32,7 +33,8 @@ fn harmony_call_with_start_prefix_and_no_terminator_parses_in_batch() {
 
 #[test]
 fn mistral_v3_array_form_parses() {
-    let response = "[TOOL_CALLS] [{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}]";
+    let response =
+        "[TOOL_CALLS] [{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}]";
     let (text, calls) = parse(response);
     assert!(text.is_empty(), "{text:?}");
     assert_eq!(calls.len(), 1);

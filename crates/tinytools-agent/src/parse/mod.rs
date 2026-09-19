@@ -215,10 +215,8 @@ pub(crate) fn scan(text: &str, options: &ParseOptions<'_>, mode: ScanMode) -> Sc
                             body_chars,
                             "[agent_parse] malformed tool-call block: body did not decode to a call"
                         );
-                        out.diagnostics.push(ParseDiagnostic::MalformedBlock {
-                            source,
-                            body_chars,
-                        });
+                        out.diagnostics
+                            .push(ParseDiagnostic::MalformedBlock { source, body_chars });
                     }
                     Decoded::Noise => {
                         out.kept.push(from..block.start);

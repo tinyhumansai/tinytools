@@ -16,7 +16,9 @@ fn deepseek_r1_function_sep_layout_parses() {
 
 #[test]
 fn deepseek_v3_name_sep_layout_parses() {
-    let (_, calls) = parse("<｜tool▁call▁begin｜>get_weather<｜tool▁sep｜>{\"location\":\"Tokyo\"}<｜tool▁call▁end｜>");
+    let (_, calls) = parse(
+        "<｜tool▁call▁begin｜>get_weather<｜tool▁sep｜>{\"location\":\"Tokyo\"}<｜tool▁call▁end｜>",
+    );
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].name, "get_weather");
 }

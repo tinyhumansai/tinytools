@@ -27,7 +27,10 @@ fn claude_invoke_blocks_preserve_typed_parameters() {
 fn unclosed_invoke_is_kept_as_text() {
     let malformed = "lead <invoke name=\"broken\"><parameter name=\"x\">1</parameter>";
     let (text, calls) = parse(malformed);
-    assert_eq!(text, "lead <invoke name=\"broken\"><parameter name=\"x\">1</parameter>");
+    assert_eq!(
+        text,
+        "lead <invoke name=\"broken\"><parameter name=\"x\">1</parameter>"
+    );
     assert!(calls.is_empty());
 }
 
@@ -56,7 +59,10 @@ fn function_equals_form_with_parameter_children_parses() {
     let (_, calls) = parse(source);
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].name, "get_weather");
-    assert_eq!(calls[0].arguments, serde_json::json!({"city": "Paris", "days": 3}));
+    assert_eq!(
+        calls[0].arguments,
+        serde_json::json!({"city": "Paris", "days": 3})
+    );
 }
 
 #[test]
@@ -68,7 +74,8 @@ fn function_equals_form_with_json_body_parses() {
 
 #[test]
 fn gemma_function_name_attribute_form_parses() {
-    let (_, calls) = parse("<function name=\"read\"><parameter name=\"path\">x</parameter></function>");
+    let (_, calls) =
+        parse("<function name=\"read\"><parameter name=\"path\">x</parameter></function>");
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].name, "read");
 }
@@ -120,7 +127,10 @@ fn dsml_invoke_with_orphan_closing_parameter_tag_parses() {
     );
     let (_narrative, calls) = parse(response);
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].arguments["label_ids"], serde_json::json!(["INBOX"]));
+    assert_eq!(
+        calls[0].arguments["label_ids"],
+        serde_json::json!(["INBOX"])
+    );
     assert_eq!(calls[0].arguments["max_results"], 500);
 }
 
@@ -159,7 +169,10 @@ fn dsml_parameter_with_named_arguments_parses() {
     );
     let (_narrative, calls) = parse(response);
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].arguments["toolkits"], serde_json::json!(["twitter"]));
+    assert_eq!(
+        calls[0].arguments["toolkits"],
+        serde_json::json!(["twitter"])
+    );
 }
 
 #[test]
@@ -210,7 +223,10 @@ fn dsml_fullwidth_single_bar_with_string_parameter_keeps_markers_inside_values()
     );
     let (_, calls) = parse(response);
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].arguments["text"], "literal <｜DSML｜tool_calls> marker");
+    assert_eq!(
+        calls[0].arguments["text"],
+        "literal <｜DSML｜tool_calls> marker"
+    );
 }
 
 #[test]

@@ -59,7 +59,12 @@ impl Grammar for Sentinel {
         let pending = pending_opener(
             text,
             from,
-            &["<|tool_call", "<｜tool▁call", "<|tool_calls", "<｜tool▁calls"],
+            &[
+                "<|tool_call",
+                "<｜tool▁call",
+                "<|tool_calls",
+                "<｜tool▁calls",
+            ],
             ">",
             mode,
         );
@@ -67,7 +72,12 @@ impl Grammar for Sentinel {
     }
 
     fn openers(&self) -> &'static [&'static str] {
-        &["<|tool_call", "<｜tool▁call", "<|tool_calls", "<｜tool▁calls"]
+        &[
+            "<|tool_call",
+            "<｜tool▁call",
+            "<|tool_calls",
+            "<｜tool▁calls",
+        ]
     }
 }
 
@@ -80,9 +90,11 @@ impl Sentinel {
         options: &ParseOptions<'_>,
         mode: ScanMode,
     ) -> Probe {
-        let (Some(begin_re), Some(end_re), Some(wrapper_re)) =
-            (CALL_BEGIN_RE.as_ref(), CALL_END_RE.as_ref(), WRAPPER_RE.as_ref())
-        else {
+        let (Some(begin_re), Some(end_re), Some(wrapper_re)) = (
+            CALL_BEGIN_RE.as_ref(),
+            CALL_END_RE.as_ref(),
+            WRAPPER_RE.as_ref(),
+        ) else {
             return Probe::None;
         };
         let hay = &text[from..];

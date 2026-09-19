@@ -19,7 +19,10 @@ fn exact_names_are_untouched() {
 
 #[test]
 fn leaked_xml_attributes_are_trimmed() {
-    assert_eq!(resolve("terminal\" parameter=\"command\" string=\"true", &known()).name, "terminal");
+    assert_eq!(
+        resolve("terminal\" parameter=\"command\" string=\"true", &known()).name,
+        "terminal"
+    );
     assert_eq!(resolve("terminal\"", &known()).name, "terminal");
     assert_eq!(resolve("read_file(", &known()).name, "read_file");
 }
@@ -46,7 +49,10 @@ fn a_single_typo_resolves_when_unique() {
 
 #[test]
 fn ambiguous_or_distant_names_are_not_invented() {
-    let r = resolve("xead_file", &["read_file".to_string(), "bead_file".to_string()]);
+    let r = resolve(
+        "xead_file",
+        &["read_file".to_string(), "bead_file".to_string()],
+    );
     assert!(!r.known, "two equally close candidates must not dispatch");
     let r = resolve("launch_missiles", &known());
     assert_eq!(r.name, "launch_missiles");

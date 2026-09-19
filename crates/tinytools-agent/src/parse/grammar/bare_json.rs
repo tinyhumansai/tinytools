@@ -21,7 +21,10 @@ use crate::types::{CallSource, ParseOptions, ParsedToolCall};
 
 /// The calls in a whole-response JSON value, plus any `content` text it
 /// carried. `None` when the response is not one JSON value.
-pub(crate) fn parse(text: &str, options: &ParseOptions<'_>) -> Option<(String, Vec<ParsedToolCall>)> {
+pub(crate) fn parse(
+    text: &str,
+    options: &ParseOptions<'_>,
+) -> Option<(String, Vec<ParsedToolCall>)> {
     let candidate = strip_code_fence(text.trim());
     let (first, last) = (candidate.chars().next()?, candidate.chars().last()?);
     if !matches!((first, last), ('{', '}') | ('[', ']')) {

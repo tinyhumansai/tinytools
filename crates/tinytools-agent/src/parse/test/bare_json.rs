@@ -26,28 +26,41 @@ fn a_bare_object_with_canonical_arguments_parses() {
 #[test]
 fn a_bare_object_with_only_an_alias_is_plain_text() {
     let (text, calls) = parse(r#"{"name":"Alice","input":{"value":"hi"}}"#);
-    assert!(calls.is_empty(), "a JSON answer must not become a phantom call");
+    assert!(
+        calls.is_empty(),
+        "a JSON answer must not become a phantom call"
+    );
     assert_eq!(text, r#"{"name":"Alice","input":{"value":"hi"}}"#);
 }
 
 #[test]
 fn a_bare_object_naming_a_known_tool_may_use_an_alias() {
-    let outcome = parse_known(r#"{"name":"get_weather","parameters":{"city":"Paris"}}"#, &["get_weather"]);
+    let outcome = parse_known(
+        r#"{"name":"get_weather","parameters":{"city":"Paris"}}"#,
+        &["get_weather"],
+    );
     assert_eq!(outcome.calls.len(), 1);
     assert_eq!(outcome.calls[0].arguments["city"], "Paris");
 }
 
 #[test]
 fn llama_bare_object_with_mismatched_quotes_is_repaired() {
-    let outcome = parse_known(r#"{"name":"get_weather","parameters':{'city':"Paris"}}"#, &["get_weather"]);
+    let outcome = parse_known(
+        r#"{"name":"get_weather","parameters':{'city':"Paris"}}"#,
+        &["get_weather"],
+    );
     assert_eq!(outcome.calls.len(), 1);
-    assert_eq!(outcome.calls[0].arguments, serde_json::json!({ "city": "Paris" }));
+    assert_eq!(
+        outcome.calls[0].arguments,
+        serde_json::json!({ "city": "Paris" })
+    );
     assert!(outcome.text.is_empty());
 }
 
 #[test]
 fn a_bare_object_inside_a_code_fence_parses() {
-    let (_, calls) = parse("```json\n{\"name\":\"get_weather\",\"arguments\":{\"city\":\"Paris\"}}\n```");
+    let (_, calls) =
+        parse("```json\n{\"name\":\"get_weather\",\"arguments\":{\"city\":\"Paris\"}}\n```");
     assert_eq!(calls.len(), 1);
 }
 
@@ -62,7 +75,10 @@ fn bare_recovery_never_swallows_a_genuine_text_answer() {
         "[1, 2, 3]",
     ] {
         let (cleaned, calls) = parse(text);
-        assert!(calls.is_empty(), "{text:?} must not be recovered as a tool call");
+        assert!(
+            calls.is_empty(),
+            "{text:?} must not be recovered as a tool call"
+        );
         assert_eq!(cleaned, text);
     }
 }

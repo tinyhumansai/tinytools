@@ -23,12 +23,16 @@ fn scrub_all(fragments: &[&str]) -> (String, usize) {
 
 #[test]
 fn plain_text_passes_through_unchanged() {
-    assert_eq!(scrub_all(&["hello ", "world", " done"]).0, "hello world done");
+    assert_eq!(
+        scrub_all(&["hello ", "world", " done"]).0,
+        "hello world done"
+    );
 }
 
 #[test]
 fn a_complete_block_in_one_fragment_is_dropped_and_its_call_released() {
-    let (out, calls) = scrub_all(&[r#"before <tool_call>{"name":"x","arguments":{}}</tool_call> after"#]);
+    let (out, calls) =
+        scrub_all(&[r#"before <tool_call>{"name":"x","arguments":{}}</tool_call> after"#]);
     assert_eq!(out, "before  after");
     assert_eq!(calls, 1);
 }
@@ -63,7 +67,10 @@ fn an_attribute_open_form_split_mid_tag_is_held() {
     let mut s = StreamScrubber::new();
     let mut out = String::new();
     out.push_str(&s.feed("ok <tool_call id=\"c").text);
-    out.push_str(&s.feed("all_0\">{\"name\":\"x\",\"arguments\":{}}</tool_call>").text);
+    out.push_str(
+        &s.feed("all_0\">{\"name\":\"x\",\"arguments\":{}}</tool_call>")
+            .text,
+    );
     out.push_str(&s.flush().text);
     assert_eq!(out, "ok ");
 }
@@ -126,7 +133,10 @@ fn stream_matches_batch_parser_on_the_visible_text() {
     let frags: Vec<String> = full.chars().map(|c| c.to_string()).collect();
     let refs: Vec<&str> = frags.iter().map(String::as_str).collect();
     let (streamed, stream_calls) = scrub_all(&refs);
-    assert_eq!(streamed.split_whitespace().collect::<Vec<_>>(), batch.split_whitespace().collect::<Vec<_>>());
+    assert_eq!(
+        streamed.split_whitespace().collect::<Vec<_>>(),
+        batch.split_whitespace().collect::<Vec<_>>()
+    );
     assert_eq!(stream_calls, 2);
 }
 

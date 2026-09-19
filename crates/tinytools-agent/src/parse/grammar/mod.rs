@@ -101,7 +101,9 @@ pub(crate) static GRAMMARS: &[&dyn Grammar] = &[
 
 /// Every opener prefix across all scan grammars.
 pub(crate) fn all_openers() -> impl Iterator<Item = &'static str> {
-    GRAMMARS.iter().flat_map(|grammar| grammar.openers().iter().copied())
+    GRAMMARS
+        .iter()
+        .flat_map(|grammar| grammar.openers().iter().copied())
 }
 
 /// Case-insensitive `find` for an ASCII needle.

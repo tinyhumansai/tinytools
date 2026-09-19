@@ -112,7 +112,12 @@ fn resolved(original: &str, name: &str) -> NameResolution {
 /// Cuts the name at the first character that cannot be part of one.
 fn trim_junk(s: &str) -> &str {
     let end = s
-        .find(|c: char| matches!(c, '"' | '\'' | '<' | '>' | '(' | ')' | '\n' | '\r' | ':' | '=' | '{' | '['))
+        .find(|c: char| {
+            matches!(
+                c,
+                '"' | '\'' | '<' | '>' | '(' | ')' | '\n' | '\r' | ':' | '=' | '{' | '['
+            )
+        })
         .unwrap_or(s.len());
     s[..end].trim()
 }
@@ -183,7 +188,11 @@ fn unique_fuzzy<'a>(needle: &str, known: &'a [String]) -> Option<&'a str> {
             }
         }
     }
-    if ambiguous { None } else { best.map(|(name, _)| name) }
+    if ambiguous {
+        None
+    } else {
+        best.map(|(name, _)| name)
+    }
 }
 
 /// Levenshtein distance over chars.

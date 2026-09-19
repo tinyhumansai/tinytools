@@ -119,7 +119,9 @@ impl InvokeXml {
         // A bare `<tool_calls>` opener with no invoke anywhere after it is a
         // prose mention (the JSON key, say) and stays.
         if let Some(w) = wrapper
-            && open.as_ref().is_none_or(|o| w.start() < o.get(0).map_or(usize::MAX, |m| m.start()))
+            && open
+                .as_ref()
+                .is_none_or(|o| w.start() < o.get(0).map_or(usize::MAX, |m| m.start()))
             && (open.is_some() || is_closer_or_prefixed(w.as_str()))
         {
             return Probe::Found(Block {
@@ -185,7 +187,8 @@ impl InvokeXml {
 /// either is unambiguous protocol furniture even with no invoke in sight.
 fn is_closer_or_prefixed(tag: &str) -> bool {
     let inner = &tag[1..];
-    inner.starts_with('/') || !inner.starts_with(|c: char| c.is_ascii_alphabetic())
+    inner.starts_with('/')
+        || !inner.starts_with(|c: char| c.is_ascii_alphabetic())
         || inner.contains(':')
 }
 
@@ -219,9 +222,10 @@ fn decode_arguments(body: &str) -> serde_json::Value {
         return serde_json::Value::Object(parameters);
     }
 
-    let stripped = ORPHAN_PARAMETER_CLOSE_RE
-        .as_ref()
-        .map_or_else(|| body.to_string(), |re| re.replace_all(body, "").into_owned());
+    let stripped = ORPHAN_PARAMETER_CLOSE_RE.as_ref().map_or_else(
+        || body.to_string(),
+        |re| re.replace_all(body, "").into_owned(),
+    );
     let stripped = stripped.trim();
     if stripped.is_empty() {
         return serde_json::json!({});
@@ -237,11 +241,13 @@ fn decode_arguments(body: &str) -> serde_json::Value {
 fn scalar_value(raw: &str) -> serde_json::Value {
     let trimmed = raw.trim();
     match serde_json::from_str::<serde_json::Value>(trimmed) {
-        Ok(value @ (serde_json::Value::Number(_)
-        | serde_json::Value::Bool(_)
-        | serde_json::Value::Null
-        | serde_json::Value::Array(_)
-        | serde_json::Value::Object(_))) => value,
+        Ok(
+            value @ (serde_json::Value::Number(_)
+            | serde_json::Value::Bool(_)
+            | serde_json::Value::Null
+            | serde_json::Value::Array(_)
+            | serde_json::Value::Object(_)),
+        ) => value,
         _ => serde_json::Value::String(trimmed.to_string()),
     }
 }

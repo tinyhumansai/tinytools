@@ -20,7 +20,8 @@ use std::ops::Range;
 
 /// Info-string languages that mark a fence as a tool call rather than a code
 /// example.
-pub const TOOL_CALL_LANGUAGES: &[&str] = &["tool_call", "toolcall", "tool-call", "invoke", "tool_calls"];
+pub const TOOL_CALL_LANGUAGES: &[&str] =
+    &["tool_call", "toolcall", "tool-call", "invoke", "tool_calls"];
 
 /// Byte ranges of protected fenced blocks, in order, non-overlapping.
 #[must_use]
@@ -62,7 +63,8 @@ pub fn fence_ranges(text: &str) -> Vec<Range<usize>> {
                     // The range ends at the closing backticks, not the line
                     // end, so a marker on the same line is scanned.
                     let indent = line.len() - stripped.len();
-                    let fence_bytes: usize = stripped.chars().take(fence_len).map(char::len_utf8).sum();
+                    let fence_bytes: usize =
+                        stripped.chars().take(fence_len).map(char::len_utf8).sum();
                     ranges.push(start..line_start + indent + fence_bytes);
                     open = None;
                 }
