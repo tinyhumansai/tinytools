@@ -7,8 +7,7 @@
 mod types;
 
 pub use types::{
-    ToolAccess, ToolDisplay, ToolPolicy, ToolReplay, ToolRuntime, ToolSideEffects,
-    WorkspaceAccess,
+    ToolAccess, ToolDisplay, ToolPolicy, ToolReplay, ToolRuntime, ToolSideEffects, WorkspaceAccess,
 };
 
 #[cfg(test)]

@@ -237,7 +237,8 @@ fn text_and_output_render_placeholders_for_image_and_file_blocks() {
 
 #[test]
 fn with_image_appends_an_image_block() {
-    let r = ToolResult::success("caption").with_image("image/png", ImageData::Base64("Zm9v".into()));
+    let r =
+        ToolResult::success("caption").with_image("image/png", ImageData::Base64("Zm9v".into()));
     assert_eq!(r.content.len(), 2);
     assert!(r.text().ends_with("[image image/png]"));
 }
