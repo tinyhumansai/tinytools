@@ -36,10 +36,11 @@ impl Grammar for Harmony {
     fn probe(&self, text: &str, from: usize, _options: &ParseOptions<'_>, mode: ScanMode) -> Probe {
         let mut cursor = from;
         while let Some(idx) = find_ci(text, CHANNEL, cursor) {
+            let start = absorb_start_prefix(text, idx);
             let header_start = idx + CHANNEL.len();
             let Some(message_rel) = find_ci(text, MESSAGE, header_start) else {
                 if mode == ScanMode::Stream {
-                    return Probe::Pending { start: idx };
+                    return Probe::Pending { start };
                 }
                 return Probe::None;
             };
@@ -57,12 +58,12 @@ impl Grammar for Harmony {
                 .min_by_key(|(i, _)| *i);
             let Some((payload_end, term_end)) = terminator else {
                 if mode == ScanMode::Stream {
-                    return Probe::Pending { start: idx };
+                    return Probe::Pending { start };
                 }
                 // Batch: the payload runs to the end of the text.
-                return found(idx, text.len(), &name, after);
+                return found(start, text.len(), &name, after);
             };
-            return found(idx, payload_start + term_end, &name, &after[..payload_end]);
+            return found(start, payload_start + term_end, &name, &after[..payload_end]);
         }
         Probe::None
     }
