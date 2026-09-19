@@ -35,6 +35,10 @@ pub mod stream;
 mod telemetry;
 pub mod types;
 
+/// The tool vocabulary this crate renders and parses against, re-exported so
+/// a consumer that only speaks the protocol need not name `tinytools` itself.
+pub use tinytools;
+
 pub use parse::{
     extract_json_values, parse_arguments_value, parse_glm_style_tool_calls, parse_text,
     parse_tool_call_value, parse_tool_calls, parse_tool_calls_from_json_value,
