@@ -61,6 +61,31 @@ fn ambiguous_or_distant_names_are_not_invented() {
 }
 
 #[test]
+fn a_normalized_collision_between_offered_tools_is_not_dispatched() {
+    // `read_file` and `read-file` both normalize to `read_file`. A damaged
+    // name that only matches after normalization must not be dispatched to
+    // whichever of the two colliding tools happens to be offered first.
+    let known: Vec<String> = ["read_file", "read-file"]
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    let r = resolve("Read File", &known);
+    assert!(
+        !r.known,
+        "an ambiguous normalized match must not dispatch: {r:?}"
+    );
+
+    // The class-suffix path re-normalizes after stripping `_tool`/`Tool` and
+    // must apply the same uniqueness rule.
+    let known: Vec<String> = ["todo", "to_do"].iter().map(ToString::to_string).collect();
+    let r = resolve("ToDoTool", &known);
+    assert!(
+        !r.known,
+        "an ambiguous suffix-stripped match must not dispatch: {r:?}"
+    );
+}
+
+#[test]
 fn without_known_tools_only_junk_is_trimmed() {
     let r = resolve("terminal\" parameter", &[]);
     assert_eq!(r.name, "terminal");
