@@ -42,7 +42,6 @@
 //! name did not resolve is still returned, flagged in the diagnostics.
 
 pub(crate) mod call_object;
-pub mod grammar_api;
 pub(crate) mod grammar;
 pub(crate) mod json_values;
 pub mod protected;
@@ -67,7 +66,7 @@ pub fn parse_text(text: &str, options: &ParseOptions<'_>) -> ParseOutcome {
     }
 
     let scan = scan(text, options, ScanMode::Batch);
-    let mut parts: Vec<&str> = scan
+    let parts: Vec<&str> = scan
         .kept
         .iter()
         .map(|range| text[range.clone()].trim())
@@ -76,15 +75,12 @@ pub fn parse_text(text: &str, options: &ParseOptions<'_>) -> ParseOutcome {
     let mut calls = scan.calls;
     let diagnostics = scan.diagnostics;
 
-    let narrative;
     if calls.is_empty() {
         let joined = parts.join("\n");
         let (cleaned, glm_calls) = grammar::glm::parse_and_strip(&joined);
         if !glm_calls.is_empty() {
             calls = glm_calls;
-            narrative = cleaned.trim().to_string();
-            parts.clear();
-            return finalize(narrative, calls, diagnostics, options);
+            return finalize(cleaned.trim().to_string(), calls, diagnostics, options);
         }
     }
     finalize(parts.join("\n"), calls, diagnostics, options)
@@ -148,6 +144,7 @@ pub(crate) fn scan(text: &str, options: &ParseOptions<'_>, mode: ScanMode) -> Sc
 
     loop {
         let mut best: Option<Probe> = None;
+        let mut best_source = CallSource::TaggedJson;
         let mut best_start = usize::MAX;
         for grammar in GRAMMARS {
             let mut cursor = from;
@@ -180,6 +177,7 @@ pub(crate) fn scan(text: &str, options: &ParseOptions<'_>, mode: ScanMode) -> Sc
                 && start < best_start
             {
                 best_start = start;
+                best_source = grammar.source();
                 best = Some(probe);
             }
         }
@@ -195,10 +193,7 @@ pub(crate) fn scan(text: &str, options: &ParseOptions<'_>, mode: ScanMode) -> Sc
                 break;
             }
             Some(Probe::Found(block)) => {
-                let source = GRAMMARS
-                    .iter()
-                    .find_map(|_| None)
-                    .unwrap_or(CallSource::TaggedJson);
+                let source = best_source;
                 match block.decoded {
                     Decoded::Calls(calls) => {
                         out.kept.push(from..block.start);
