@@ -822,3 +822,16 @@ fn the_native_dialect_carries_the_flag_onto_the_entry() {
     assert!(results[0].trusted_verbatim);
     assert_eq!(results[0].content, "payload");
 }
+
+#[test]
+fn json_call_rendering_round_trips_through_the_parser() {
+    let rendered = crate::render::render_json_calls([
+        ("read_file", &serde_json::json!({ "path": "a.txt" })),
+        ("noargs", &serde_json::json!({})),
+    ]);
+    let (_, calls) = crate::parse_tool_calls(&rendered);
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].name, "read_file");
+    assert_eq!(calls[0].arguments["path"], "a.txt");
+    assert_eq!(calls[1].arguments, serde_json::json!({}));
+}
