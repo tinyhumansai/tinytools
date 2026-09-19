@@ -5,7 +5,7 @@
 
 use serde_json::json;
 
-use super::{ToolContent, ToolResult};
+use super::{FileData, ImageData, ToolContent, ToolControl, ToolErrorKind, ToolResult};
 
 #[test]
 fn success_carries_one_text_block() {
