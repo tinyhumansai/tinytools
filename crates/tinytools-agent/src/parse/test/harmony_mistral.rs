@@ -79,14 +79,20 @@ fn mistral_v11_name_args_form_parses() {
 }
 
 #[test]
-fn mistral_v3_array_of_non_call_objects_falls_through_to_v11_scan() {
+fn mistral_v3_array_of_non_call_objects_yields_no_calls() {
     // The array parses as JSON but contains no `name`/`arguments` call
-    // shape, so the v3 branch yields no calls and control must fall
-    // through to the v11 `NAME[ARGS]{...}` scan rather than stopping.
-    let response = "[TOOL_CALLS] [{\"foo\":1}] get_weather[ARGS]{\"city\":\"Paris\"}";
-    let (_, calls) = parse(response);
-    assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].name, "get_weather");
+    // shape, so the v3 branch must not treat it as a found block — it
+    // falls through to the (here, also empty) v11 scan and the response
+    // is reported as malformed rather than silently dropped.
+    let response = "[TOOL_CALLS] [{\"foo\":1}]";
+    let outcome = parse_known(response, &[]);
+    assert!(outcome.calls.is_empty());
+    assert!(
+        outcome
+            .diagnostics
+            .iter()
+            .any(|d| matches!(d, ParseDiagnostic::MalformedBlock { .. }))
+    );
 }
 
 #[test]
