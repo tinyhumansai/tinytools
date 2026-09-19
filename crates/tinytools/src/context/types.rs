@@ -61,4 +61,17 @@ pub trait ToolRunContext: Send + Sync {
     fn workspace_policy_id(&self) -> Option<&str> {
         self.workspace().map(|w| w.policy_id.as_str())
     }
+
+    /// The host's own context object, erased, for a tool written against a
+    /// specific harness that needs more than the portable facts above.
+    ///
+    /// The same escape hatch as [`Tool::host_extension`][crate::Tool::host_extension]:
+    /// this crate has no business naming the harness's context type, so a
+    /// host returns `Some(self)` and a tool that knows which host it runs
+    /// under downcasts. Every other implementor returns `None` and pays
+    /// nothing. A tool that only needs the workspace, thread id, or output
+    /// cap should keep using the typed methods.
+    fn host_extension(&self) -> Option<&(dyn std::any::Any + Send + Sync)> {
+        None
+    }
 }

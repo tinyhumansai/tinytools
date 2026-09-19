@@ -35,7 +35,9 @@ impl Tool for Echo {
 `Tool` describes a callable capability. Its result is a `ToolResult` block list
 with a reported-error flag and optional markdown rendering. `ToolSpec` is the
 model-visible declaration. `ToolRunContext` exposes only tool-relevant run
-facts: workspace, thread id, and output cap.
+facts: workspace, thread id, and output cap — plus `host_extension()`, the
+same type-erased escape hatch `Tool::host_extension` offers, so a tool written
+against one specific harness can downcast to that harness's full context.
 
 ## Rich tool returns
 
