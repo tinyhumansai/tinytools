@@ -59,8 +59,31 @@ const MAX_EXCESS_CLOSERS: usize = 50;
 /// after `serde_json::from_str` has already failed on `raw`; a well-formed
 /// object is returned unchanged by the first rung anyway, but the ladder is not
 /// free.
+///
+/// The final rung accepts a valid object followed by trailing noise — correct
+/// when `raw` is already known to be *inside* a call (a marker-delimited
+/// argument payload), where anything after the object is furniture, not data.
+/// A whole-response candidate has no such delimiter and must use
+/// [`recover_whole_object`] instead, which holds out for the entire candidate.
 #[must_use]
 pub fn recover_object(raw: &str) -> Option<Value> {
+    recover_ladder(raw, true)
+}
+
+/// [`recover_object`]'s ladder, but without the trailing-noise rung: the
+/// repaired object must account for the **entire** candidate.
+///
+/// For a whole-response grammar (bare JSON), accepting a valid leading object
+/// followed by unrelated trailing text would dispatch a call out of ordinary
+/// prose that merely starts with one — `{"name":"shell","arguments":{}}
+/// explanation follows` is not a call, it is prose that happens to start with
+/// one.
+#[must_use]
+pub fn recover_whole_object(raw: &str) -> Option<Value> {
+    recover_ladder(raw, false)
+}
+
+fn recover_ladder(raw: &str, allow_trailing_noise: bool) -> Option<Value> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
@@ -103,8 +126,12 @@ pub fn recover_object(raw: &str) -> Option<Value> {
         }
     }
 
-    // Rung 5: a valid leading object followed by trailing noise.
-    leading_object(candidate.trim())
+    // Rung 5: a valid leading object followed by trailing noise. Only when
+    // the caller has already established that trailing noise is expected.
+    if allow_trailing_noise {
+        return leading_object(candidate.trim());
+    }
+    None
 }
 
 /// Parses `s` strictly and keeps it only when it is an object.
