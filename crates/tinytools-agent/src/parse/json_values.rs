@@ -52,7 +52,7 @@ pub fn extract_json_values(input: &str) -> Vec<Value> {
 
 /// The first JSON value in `input` and the byte offset just past it.
 #[must_use]
-pub fn extract_first_json_value_with_end(input: &str) -> Option<(Value, usize)> {
+pub(crate) fn extract_first_json_value_with_end(input: &str) -> Option<(Value, usize)> {
     let trimmed = input.trim_start();
     let trim_offset = input.len().saturating_sub(trimmed.len());
 
@@ -76,7 +76,7 @@ pub fn extract_first_json_value_with_end(input: &str) -> Option<(Value, usize)> 
 /// The byte offset just past the object that opens at the start of `input`
 /// (after leading whitespace), found by tracking balanced braces.
 #[must_use]
-pub fn find_json_end(input: &str) -> Option<usize> {
+pub(crate) fn find_json_end(input: &str) -> Option<usize> {
     let trimmed = input.trim_start();
     let offset = input.len() - trimmed.len();
 
@@ -113,7 +113,7 @@ pub fn find_json_end(input: &str) -> Option<usize> {
 /// Drops any run of leading closing tags (`</x>`) and the whitespace around
 /// them. A truncated closing tag with no `>` consumes the rest.
 #[must_use]
-pub fn strip_leading_close_tags(mut input: &str) -> &str {
+pub(crate) fn strip_leading_close_tags(mut input: &str) -> &str {
     loop {
         let trimmed = input.trim_start();
         if !trimmed.starts_with("</") {
