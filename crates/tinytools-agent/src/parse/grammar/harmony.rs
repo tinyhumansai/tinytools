@@ -24,6 +24,9 @@ pub(crate) struct Harmony;
 const CHANNEL: &str = "<|channel|>";
 const MESSAGE: &str = "<|message|>";
 const TERMINATORS: &[&str] = &["<|call|>", "<|end|>", "<|return|>"];
+/// The Harmony template's per-turn preamble, always immediately before the
+/// first channel. Furniture, not narrative — see the module doc.
+const START_PREFIX: &str = "<|start|>assistant";
 
 impl Grammar for Harmony {
     fn source(&self) -> CallSource {
