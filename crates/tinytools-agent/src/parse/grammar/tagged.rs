@@ -105,6 +105,7 @@ impl Grammar for Tagged {
             "```tool_call",
             "```toolcall",
             "```tool-call",
+            "```tool_calls",
             "```invoke",
         ]
     }
