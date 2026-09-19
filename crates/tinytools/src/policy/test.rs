@@ -195,3 +195,34 @@ fn fully_populated_policy_has_a_pinned_json_wire_shape() {
         policy
     );
 }
+
+#[test]
+fn replay_defaults_to_never() {
+    assert_eq!(ToolRuntime::default().replay, ToolReplay::Never);
+}
+
+#[test]
+fn replay_round_trips_through_json() {
+    let runtime = ToolRuntime {
+        replay: ToolReplay::Safe,
+        ..ToolRuntime::default()
+    };
+    let encoded = serde_json::to_string(&runtime).expect("serializable");
+    assert!(encoded.contains("\"replay\":\"safe\""));
+    let back: ToolRuntime = serde_json::from_str(&encoded).expect("deserializable");
+    assert_eq!(back.replay, ToolReplay::Safe);
+}
+
+#[test]
+fn legacy_runtime_json_without_replay_defaults_to_never() {
+    // A `ToolRuntime` persisted before `replay` existed should still decode.
+    let literal = r#"{
+        "timeout": { "mode": "inherit" },
+        "idempotent": false,
+        "cancelable": false,
+        "sandbox": "none",
+        "streaming": false
+    }"#;
+    let decoded: ToolRuntime = serde_json::from_str(literal).expect("deserializable");
+    assert_eq!(decoded.replay, ToolReplay::Never);
+}
