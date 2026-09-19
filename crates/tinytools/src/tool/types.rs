@@ -303,4 +303,19 @@ pub trait Tool: Send + Sync {
             .detail
             .or_else(|| context_detail_from_args(args))
     }
+
+    /// Whether every successful call to this tool should be returned directly
+    /// to the caller without further model interaction, as a static,
+    /// per-tool default.
+    ///
+    /// This is the *tool's* declared default — a per-call override lives on
+    /// [`ToolResult::control`][crate::ToolResult::control] via
+    /// [`ToolResult::return_direct`][crate::ToolResult::return_direct], which
+    /// a harness should prefer when a result sets it. Most tools return
+    /// `false`; a tool whose entire purpose is to hand the model's answer
+    /// straight back — a final-answer or handoff tool — overrides this to
+    /// `true` so a harness need not special-case it by name.
+    fn return_direct(&self) -> bool {
+        false
+    }
 }
