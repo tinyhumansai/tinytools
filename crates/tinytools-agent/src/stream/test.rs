@@ -152,6 +152,21 @@ fn a_fenced_example_split_across_fragments_never_leaks_a_call() {
 }
 
 #[test]
+fn a_namespaced_invoke_opener_split_before_its_closing_bracket_is_held() {
+    // The namespace prefix (`atem:`) is open-ended and not in any fixed
+    // opener list, so this can only be caught by recognizing the tag
+    // structurally rather than by literal prefix matching.
+    let mut s = StreamScrubber::new();
+    let first = s.feed("<atem:invoke name=\"read\"");
+    assert_eq!(first.text, "", "an unterminated namespaced opener must be held");
+    assert!(first.calls.is_empty());
+
+    let second = s.feed("><parameter name=\"path\">a</parameter></atem:invoke>");
+    assert_eq!(second.calls.len(), 1);
+    assert_eq!(second.calls[0].name, "read");
+}
+
+#[test]
 fn a_harmony_channel_header_without_message_yet_is_held() {
     // The header names a target but `<|message|>` has not streamed in yet,
     // so the scrubber must hold the fragment rather than guess.
