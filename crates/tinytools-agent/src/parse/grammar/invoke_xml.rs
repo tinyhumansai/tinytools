@@ -123,6 +123,18 @@ impl Grammar for InvokeXml {
 }
 
 impl InvokeXml {
+    /// The start of a namespaced `<ns:invoke …` (or `<ns:function …`) opener
+    /// whose `>` has not arrived yet, if any.
+    fn pending_namespaced_open(text: &str, from: usize) -> Option<usize> {
+        let re = OPEN_START_RE.as_ref()?;
+        let hay = &text[from..];
+        let m = re.find(hay)?;
+        if hay[m.end()..].contains('>') {
+            return None;
+        }
+        Some(from + m.start())
+    }
+
     /// The next block whose opener is fully present.
     fn probe_decided(text: &str, from: usize, mode: ScanMode) -> Probe {
         let (Some(open_re), Some(wrapper_re), Some(close_re)) =
