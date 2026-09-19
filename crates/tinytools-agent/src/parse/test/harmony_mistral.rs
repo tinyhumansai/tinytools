@@ -1,7 +1,7 @@
 //! gpt-oss Harmony and Mistral `[TOOL_CALLS]`.
 
-use super::parse;
-use crate::types::CallSource;
+use super::{parse, parse_known};
+use crate::types::{CallSource, ParseDiagnostic};
 
 #[test]
 fn harmony_commentary_call_parses() {
