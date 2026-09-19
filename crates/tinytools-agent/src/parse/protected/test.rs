@@ -1,4 +1,5 @@
 //! Unit tests for protected fenced-block detection.
+#![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
 use super::{fence_ranges, is_protected, protected_end};
 
