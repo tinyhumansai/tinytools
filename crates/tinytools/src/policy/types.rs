@@ -135,6 +135,10 @@ pub struct ToolRuntime {
     pub max_result_bytes: Option<usize>,
     /// Whether the tool can emit streaming result fragments.
     pub streaming: bool,
+    /// Whether an orphaned in-flight call for this tool may be safely
+    /// re-executed after a crash. See [`ToolReplay`].
+    #[serde(default)]
+    pub replay: ToolReplay,
 }
 
 /// Access requirements a tool declares before a host exposes or runs it.
