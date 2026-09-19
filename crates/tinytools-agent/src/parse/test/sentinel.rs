@@ -1,7 +1,7 @@
 //! DeepSeek-R1 / V3 and Kimi K2 sentinel tokens.
 
-use super::parse;
-use crate::types::CallSource;
+use super::{parse, parse_known};
+use crate::types::{CallSource, ParseDiagnostic};
 
 #[test]
 fn deepseek_r1_function_sep_layout_parses() {
