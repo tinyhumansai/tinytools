@@ -115,6 +115,19 @@ fn fenced_tool_call_block_parses() {
 }
 
 #[test]
+fn fenced_tool_calls_plural_block_parses() {
+    // `protected::TOOL_CALL_LANGUAGES` already classifies `tool_calls`
+    // (plural) as a call language, not a protected code example; this
+    // grammar must recognize it as an opener too, not just decline to
+    // protect it.
+    let markdown = "before\n```tool_calls\n[{\"name\":\"a\",\"arguments\":{}}]\n```\nafter";
+    let (text, calls) = parse(markdown);
+    assert_eq!(text, "before\nafter");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "a");
+}
+
+#[test]
 fn fenced_block_closed_by_stray_tag_parses() {
     let hybrid = "```tool_call\n{\"name\":\"echo\",\"arguments\":{}}\n</tool_call>\nrest";
     let (text, calls) = parse(hybrid);
