@@ -16,7 +16,7 @@
 //! alone; `{"name":"Alice","input":"hi"}` is left alone.
 
 use crate::parse::call_object::{AliasPolicy, read_calls};
-use crate::repair::json::{recover_object, strip_code_fence};
+use crate::repair::json::{recover_whole_object, strip_code_fence};
 use crate::types::{CallSource, ParseOptions, ParsedToolCall};
 
 /// The calls in a whole-response JSON value, plus any `content` text it
