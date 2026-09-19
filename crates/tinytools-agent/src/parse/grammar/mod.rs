@@ -118,3 +118,47 @@ pub(crate) fn find_ci(haystack: &str, needle: &str, from: usize) -> Option<usize
         .filter(|&i| haystack.is_char_boundary(i))
         .find(|&i| hay[i..i + nee.len()].eq_ignore_ascii_case(nee))
 }
+
+/// In [`ScanMode::Stream`], the earliest occurrence at or after `from` of one
+/// of `literals` that cannot be decided yet: it is not the prefix of a longer
+/// word and no `terminator` follows it anywhere in the text, so its block
+/// cannot possibly be complete. `None` in batch mode.
+pub(crate) fn pending_opener(
+    text: &str,
+    from: usize,
+    literals: &[&str],
+    terminator: &str,
+    mode: ScanMode,
+) -> Option<usize> {
+    if mode != ScanMode::Stream {
+        return None;
+    }
+    let mut earliest: Option<usize> = None;
+    for literal in literals {
+        let mut cursor = from;
+        while let Some(idx) = find_ci(text, literal, cursor) {
+            let after = idx + literal.len();
+            let word_continues = text[after..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphanumeric());
+            if !word_continues && !text[after..].contains(terminator) {
+                if earliest.is_none_or(|e| idx < e) {
+                    earliest = Some(idx);
+                }
+                break;
+            }
+            cursor = after;
+        }
+    }
+    earliest
+}
+
+/// Prefers a pending opener over a later (or absent) decided block.
+pub(crate) fn prefer_pending(probe: Probe, pending: Option<usize>) -> Probe {
+    match (probe, pending) {
+        (Probe::Found(block), Some(start)) if start < block.start => Probe::Pending { start },
+        (Probe::None, Some(start)) => Probe::Pending { start },
+        (probe, _) => probe,
+    }
+}

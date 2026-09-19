@@ -22,7 +22,7 @@
 use std::sync::Arc;
 
 use crate::PFormatRegistry;
-use crate::parse::grammar::{ScanMode, all_openers, find_ci};
+use crate::parse::grammar::{ScanMode, all_openers};
 use crate::parse::{resolve_names, scan};
 use crate::types::{ParseDiagnostic, ParseOptions, ParsedToolCall};
 
@@ -136,29 +136,10 @@ impl StreamScrubber {
 }
 
 /// Byte index in `tail` from which the trailing bytes must be held because
-/// they could still grow into a block opener. `tail.len()` when the whole
-/// tail is safe.
-///
-/// Two shapes are held: a complete opener literal that no grammar accepted
-/// yet (its attributes or `>` have not arrived), provided it is not merely
-/// the prefix of a longer word (`<tool_calls>` is prose, not a held
-/// `<tool_call`); and a trailing run that is a proper prefix of an opener.
+/// they are a proper prefix of a block opener (`<tool_ca`, `<｜DSM`, a lone
+/// `<`). `tail.len()` when the whole tail is safe. A complete opener never
+/// reaches here: the grammar that owns it reports it as pending instead.
 fn hold_from(tail: &str) -> usize {
-    let mut hold = tail.len();
-    for opener in all_openers() {
-        let mut cursor = 0;
-        while let Some(idx) = find_ci(tail, opener, cursor) {
-            let after = tail[idx + opener.len()..].chars().next();
-            let word_continues = after.is_some_and(|c| c.is_ascii_alphanumeric());
-            if !word_continues && idx < hold {
-                hold = idx;
-            }
-            cursor = idx + opener.len();
-        }
-    }
-    if hold < tail.len() {
-        return hold;
-    }
     let len = tail.len();
     let mut best = len;
     for opener in all_openers() {
