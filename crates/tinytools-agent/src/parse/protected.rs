@@ -26,9 +26,28 @@ mod test;
 pub const TOOL_CALL_LANGUAGES: &[&str] =
     &["tool_call", "toolcall", "tool-call", "invoke", "tool_calls"];
 
-/// Byte ranges of protected fenced blocks, in order, non-overlapping.
+/// Byte ranges of protected fenced blocks, in order, non-overlapping. An
+/// unclosed trailing fence is included, protecting to the end of `text`.
 #[must_use]
 pub fn fence_ranges(text: &str) -> Vec<Range<usize>> {
+    scan_fences(text).0
+}
+
+/// The start of a fence that is still open at the end of `text`, if any.
+///
+/// Used by the stream scrubber: a fence opener with no closing fence yet
+/// must not be released as safe narrative text, because the fragments that
+/// close it — and the protected content in between — have not arrived. A
+/// fence that has already closed returns `None`, even though its content is
+/// still reported by [`fence_ranges`].
+#[must_use]
+pub fn open_fence_start(text: &str) -> Option<usize> {
+    scan_fences(text).1
+}
+
+/// One pass over `text` tracking fence state. Returns every closed fenced
+/// range plus the start of a trailing fence still open when the text ends.
+fn scan_fences(text: &str) -> (Vec<Range<usize>>, Option<usize>) {
     let mut ranges = Vec::new();
     let mut open: Option<(usize, char, usize)> = None; // (start, fence char, fence len)
     let mut offset = 0;
@@ -77,7 +96,7 @@ pub fn fence_ranges(text: &str) -> Vec<Range<usize>> {
     if let Some((start, _, _)) = open {
         ranges.push(start..text.len());
     }
-    ranges
+    (ranges, open.map(|(start, _, _)| start))
 }
 
 /// Whether `position` falls inside any of `ranges`.
