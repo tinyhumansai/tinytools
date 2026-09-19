@@ -98,7 +98,7 @@ pub struct ParseOptions<'a> {
     pub allow_bare_json: bool,
 }
 
-impl<'a> Default for ParseOptions<'a> {
+impl Default for ParseOptions<'_> {
     /// Matches [`Self::new`]: a derived `Default` would leave `allow_bare_json`
     /// at `bool`'s `false`, contradicting the documented default above and
     /// silently disabling bare-JSON parsing for any caller that writes
