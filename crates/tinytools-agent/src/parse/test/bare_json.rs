@@ -90,6 +90,15 @@ fn bare_recovery_never_swallows_a_genuine_text_answer() {
 }
 
 #[test]
+fn parse_options_default_matches_new_and_allows_bare_json() {
+    // The struct doc says the default allows bare JSON; a derived `Default`
+    // would instead leave `allow_bare_json` at `bool`'s `false`.
+    let outcome =
+        crate::parse::parse_text(r#"{"name":"echo","arguments":{}}"#, &ParseOptions::default());
+    assert_eq!(outcome.calls.len(), 1);
+}
+
+#[test]
 fn bare_json_can_be_disabled() {
     let options = ParseOptions::new().without_bare_json();
     let outcome = crate::parse::parse_text(r#"{"name":"echo","arguments":{}}"#, &options);
