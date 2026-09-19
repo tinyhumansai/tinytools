@@ -57,8 +57,7 @@ fn mixed_content_joins_in_order() {
 fn empty_content_renders_empty() {
     let r = ToolResult {
         content: vec![],
-        is_error: false,
-        markdown_formatted: None,
+        ..ToolResult::default()
     };
     assert!(r.text().is_empty());
     assert!(r.output().is_empty());
