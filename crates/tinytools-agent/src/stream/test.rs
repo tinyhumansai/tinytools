@@ -126,6 +126,31 @@ fn a_harmony_call_is_held_until_its_terminator() {
 }
 
 #[test]
+fn a_fenced_example_split_across_fragments_never_leaks_a_call() {
+    // A language-tagged fence opener released before its closing fence
+    // arrives would erase the only record that the buffer is still inside
+    // protected content; the next fragment's `<tool_call>` would then be
+    // read as a real call instead of the documentation example it is.
+    let mut s = StreamScrubber::new();
+    let first = s.feed("example:\n```bash\n");
+    assert_eq!(
+        first.text, "example:\n",
+        "the open fence must be held, not drained"
+    );
+    assert!(first.calls.is_empty());
+
+    let second = s.feed("echo <tool_call>{\"name\":\"x\",\"arguments\":{}}</tool_call>\n```\nafter");
+    assert!(
+        second.calls.is_empty(),
+        "the fenced example must not dispatch a call: {second:?}"
+    );
+    assert_eq!(
+        second.text,
+        "```bash\necho <tool_call>{\"name\":\"x\",\"arguments\":{}}</tool_call>\n```\nafter"
+    );
+}
+
+#[test]
 fn a_harmony_channel_header_without_message_yet_is_held() {
     // The header names a target but `<|message|>` has not streamed in yet,
     // so the scrubber must hold the fragment rather than guess.
