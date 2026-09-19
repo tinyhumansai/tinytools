@@ -76,8 +76,9 @@ fn a_normalized_collision_between_offered_tools_is_not_dispatched() {
     );
 
     // The class-suffix path re-normalizes after stripping `_tool`/`Tool` and
-    // must apply the same uniqueness rule.
-    let known: Vec<String> = ["todo", "to_do"].iter().map(ToString::to_string).collect();
+    // must apply the same uniqueness rule: `to_do` and `ToDo` both
+    // normalize to `to_do`.
+    let known: Vec<String> = ["to_do", "ToDo"].iter().map(ToString::to_string).collect();
     let r = resolve("ToDoTool", &known);
     assert!(
         !r.known,
