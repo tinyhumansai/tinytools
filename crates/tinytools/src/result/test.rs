@@ -113,12 +113,257 @@ fn content_blocks_are_tagged_by_type() {
 
     match serde_json::from_str::<ToolContent>(&text).expect("deserializable") {
         ToolContent::Text { text } => assert_eq!(text, "test"),
-        ToolContent::Json { .. } => unreachable!("tagged as text"),
+        other => unreachable!("tagged as text, got {other:?}"),
     }
     match serde_json::from_str::<ToolContent>(&data).expect("deserializable") {
         ToolContent::Json { data } => assert_eq!(data["x"], 1),
-        ToolContent::Text { .. } => unreachable!("tagged as json"),
+        other => unreachable!("tagged as json, got {other:?}"),
     }
+}
+
+#[test]
+fn image_block_round_trips_through_json() {
+    let block = ToolContent::Image {
+        media_type: "image/png".into(),
+        data: ImageData::Base64("aGVsbG8=".into()),
+    };
+    let encoded = serde_json::to_value(&block).expect("serializable");
+    assert_eq!(
+        encoded,
+        json!({
+            "type": "image",
+            "media_type": "image/png",
+            "data": { "kind": "base64", "value": "aGVsbG8=" },
+        })
+    );
+    let decoded: ToolContent = serde_json::from_value(encoded).expect("deserializable");
+    match decoded {
+        ToolContent::Image { media_type, data } => {
+            assert_eq!(media_type, "image/png");
+            assert!(matches!(data, ImageData::Base64(b) if b == "aGVsbG8="));
+        }
+        other => unreachable!("tagged as image, got {other:?}"),
+    }
+}
+
+#[test]
+fn image_block_supports_url_data() {
+    let block = ToolContent::Image {
+        media_type: "image/jpeg".into(),
+        data: ImageData::Url("https://example.com/a.jpg".into()),
+    };
+    let encoded = serde_json::to_string(&block).expect("serializable");
+    let decoded: ToolContent = serde_json::from_str(&encoded).expect("deserializable");
+    match decoded {
+        ToolContent::Image { data, .. } => {
+            assert!(matches!(data, ImageData::Url(u) if u == "https://example.com/a.jpg"));
+        }
+        other => unreachable!("tagged as image, got {other:?}"),
+    }
+}
+
+#[test]
+fn file_block_round_trips_through_json() {
+    let block = ToolContent::File {
+        name: "report.pdf".into(),
+        media_type: "application/pdf".into(),
+        data: FileData::Path("/tmp/report.pdf".into()),
+    };
+    let encoded = serde_json::to_value(&block).expect("serializable");
+    assert_eq!(
+        encoded,
+        json!({
+            "type": "file",
+            "name": "report.pdf",
+            "media_type": "application/pdf",
+            "data": { "kind": "path", "value": "/tmp/report.pdf" },
+        })
+    );
+    let decoded: ToolContent = serde_json::from_value(encoded).expect("deserializable");
+    match decoded {
+        ToolContent::File {
+            name,
+            media_type,
+            data,
+        } => {
+            assert_eq!(name, "report.pdf");
+            assert_eq!(media_type, "application/pdf");
+            assert!(matches!(data, FileData::Path(p) if p == "/tmp/report.pdf"));
+        }
+        other => unreachable!("tagged as file, got {other:?}"),
+    }
+}
+
+#[test]
+fn file_block_supports_base64_and_url_data() {
+    let base64 = FileData::Base64("aGk=".into());
+    let url = FileData::Url("https://example.com/a.csv".into());
+    for data in [base64, url] {
+        let block = ToolContent::File {
+            name: "a".into(),
+            media_type: "text/csv".into(),
+            data,
+        };
+        let encoded = serde_json::to_string(&block).expect("serializable");
+        let _: ToolContent = serde_json::from_str(&encoded).expect("deserializable");
+    }
+}
+
+#[test]
+fn text_and_output_render_placeholders_for_image_and_file_blocks() {
+    let r = ToolResult {
+        content: vec![
+            ToolContent::Text {
+                text: "before".into(),
+            },
+            ToolContent::Image {
+                media_type: "image/png".into(),
+                data: ImageData::Base64("Zm9v".into()),
+            },
+            ToolContent::File {
+                name: "notes.txt".into(),
+                media_type: "text/plain".into(),
+                data: FileData::Url("https://example.com/notes.txt".into()),
+            },
+        ],
+        ..ToolResult::default()
+    };
+    assert_eq!(
+        r.text(),
+        "before\n[image image/png]\n[file notes.txt (text/plain)]"
+    );
+    assert_eq!(r.output(), r.text());
+}
+
+#[test]
+fn with_image_appends_an_image_block() {
+    let r = ToolResult::success("caption").with_image("image/png", ImageData::Base64("Zm9v".into()));
+    assert_eq!(r.content.len(), 2);
+    assert!(r.text().ends_with("[image image/png]"));
+}
+
+#[test]
+fn with_follow_up_is_not_included_in_text_or_output() {
+    let r = ToolResult::success("primary").with_follow_up(vec![ToolContent::Text {
+        text: "secondary".into(),
+    }]);
+    assert_eq!(r.text(), "primary");
+    assert_eq!(r.output(), "primary");
+    assert_eq!(r.follow_up.len(), 1);
+}
+
+#[test]
+fn follow_up_is_omitted_from_wire_shape_when_empty() {
+    let r = ToolResult::success("plain");
+    let encoded = serde_json::to_value(&r).expect("serializable");
+    assert!(encoded.get("follow_up").is_none());
+}
+
+#[test]
+fn follow_up_round_trips_when_present() {
+    let r = ToolResult::success("primary").with_follow_up(vec![ToolContent::Text {
+        text: "secondary".into(),
+    }]);
+    let encoded = serde_json::to_string(&r).expect("serializable");
+    let back: ToolResult = serde_json::from_str(&encoded).expect("deserializable");
+    assert_eq!(back.follow_up.len(), 1);
+}
+
+#[test]
+fn with_metadata_is_never_rendered_but_round_trips() {
+    let r = ToolResult::success("primary").with_metadata(json!({"trace_id": "abc"}));
+    assert_eq!(r.text(), "primary");
+    assert!(!r.output().contains("trace_id"));
+    let encoded = serde_json::to_string(&r).expect("serializable");
+    let back: ToolResult = serde_json::from_str(&encoded).expect("deserializable");
+    assert_eq!(back.metadata, Some(json!({"trace_id": "abc"})));
+}
+
+#[test]
+fn metadata_is_omitted_from_wire_shape_when_absent() {
+    let r = ToolResult::success("plain");
+    let encoded = serde_json::to_value(&r).expect("serializable");
+    assert!(encoded.get("metadata").is_none());
+}
+
+#[test]
+fn control_builders_set_the_expected_fields() {
+    let r = ToolResult::success("done")
+        .return_direct()
+        .terminate()
+        .with_goto("next_node")
+        .with_state_update(json!({"count": 1}));
+    let control = r.control.as_ref().expect("control set");
+    assert!(control.return_direct);
+    assert!(control.terminate);
+    assert_eq!(control.goto.as_deref(), Some("next_node"));
+    assert_eq!(control.state_update, Some(json!({"count": 1})));
+}
+
+#[test]
+fn control_is_omitted_from_wire_shape_when_absent() {
+    let r = ToolResult::success("plain");
+    let encoded = serde_json::to_value(&r).expect("serializable");
+    assert!(encoded.get("control").is_none());
+}
+
+#[test]
+fn control_round_trips_through_json() {
+    let r = ToolResult::success("done").return_direct().with_goto("n");
+    let encoded = serde_json::to_string(&r).expect("serializable");
+    let back: ToolResult = serde_json::from_str(&encoded).expect("deserializable");
+    let control = back.control.expect("control set");
+    assert!(control.return_direct);
+    assert!(!control.terminate);
+    assert_eq!(control.goto.as_deref(), Some("n"));
+}
+
+#[test]
+fn retry_and_failed_both_set_is_error_but_distinct_error_kind() {
+    let retry = ToolResult::retry("try again");
+    assert!(retry.is_error);
+    assert_eq!(retry.error_kind, Some(ToolErrorKind::Retry));
+    assert_eq!(retry.text(), "try again");
+
+    let failed = ToolResult::failed("do not retry");
+    assert!(failed.is_error);
+    assert_eq!(failed.error_kind, Some(ToolErrorKind::Failed));
+    assert_eq!(failed.text(), "do not retry");
+}
+
+#[test]
+fn plain_error_leaves_error_kind_unset() {
+    let r = ToolResult::error("failed");
+    assert_eq!(r.error_kind, None);
+}
+
+#[test]
+fn error_kind_round_trips_through_json() {
+    let r = ToolResult::retry("again");
+    let encoded = serde_json::to_string(&r).expect("serializable");
+    let back: ToolResult = serde_json::from_str(&encoded).expect("deserializable");
+    assert_eq!(back.error_kind, Some(ToolErrorKind::Retry));
+}
+
+#[test]
+fn legacy_json_without_new_fields_still_deserializes() {
+    // A transcript persisted before these fields existed should still decode,
+    // with every new field taking its default.
+    let literal = r#"{"content":[{"type":"text","text":"hi"}],"is_error":false}"#;
+    let decoded: ToolResult = serde_json::from_str(literal).expect("deserializable");
+    assert!(decoded.follow_up.is_empty());
+    assert_eq!(decoded.metadata, None);
+    assert!(decoded.control.is_none());
+    assert_eq!(decoded.error_kind, None);
+}
+
+#[test]
+fn default_control_round_trips_to_all_false_and_none() {
+    let control = ToolControl::default();
+    assert!(!control.return_direct);
+    assert!(!control.terminate);
+    assert_eq!(control.goto, None);
+    assert_eq!(control.state_update, None);
 }
 
 #[test]
