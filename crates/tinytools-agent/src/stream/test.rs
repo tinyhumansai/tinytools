@@ -126,6 +126,18 @@ fn a_harmony_call_is_held_until_its_terminator() {
 }
 
 #[test]
+fn a_harmony_channel_header_without_message_yet_is_held() {
+    // The header names a target but `<|message|>` has not streamed in yet,
+    // so the scrubber must hold the fragment rather than guess.
+    let mut s = StreamScrubber::new();
+    let first = s.feed("<|channel|>commentary to=functions.read");
+    assert_eq!(first.text, "", "a pending channel header must be held");
+    let second = s.feed("<|message|>{\"path\":\"a\"}<|call|>tail");
+    assert_eq!(second.text, "tail");
+    assert_eq!(second.calls[0].name, "read");
+}
+
+#[test]
 fn stream_matches_batch_parser_on_the_visible_text() {
     let full = r#"lead <tool_call>{"name":"a","arguments":{}}</tool_call> mid <tool_call>{"name":"b","arguments":{"k":1}}</tool_call> tail"#;
     let (batch, calls) = parse_tool_calls(full);
