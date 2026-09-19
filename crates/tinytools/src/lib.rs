@@ -122,9 +122,9 @@ pub use naming::{
 };
 pub use permission::PermissionLevel;
 pub use policy::{
-    ToolAccess, ToolDisplay, ToolPolicy, ToolRuntime, ToolSideEffects, WorkspaceAccess,
+    ToolAccess, ToolDisplay, ToolPolicy, ToolReplay, ToolRuntime, ToolSideEffects, WorkspaceAccess,
 };
-pub use result::{ToolContent, ToolResult};
+pub use result::{FileData, ImageData, ToolContent, ToolControl, ToolErrorKind, ToolResult};
 pub use spec::ToolSpec;
 pub use tool::{Tool, ToolExposure};
 pub use workspace::{SandboxMode, WorkspaceDescriptor};
