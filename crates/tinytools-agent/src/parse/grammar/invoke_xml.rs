@@ -49,6 +49,20 @@ static WRAPPER_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     .ok()
 });
 
+/// The start of an `<invoke`/`<function` opener, with or without a namespace
+/// or DSML prefix, that does not itself require the tag's `>` to match.
+///
+/// [`OPEN_RE`] only matches a *complete* opening tag, so a fragment boundary
+/// that falls before the `>` — `<atem:invoke name="read"` with nothing
+/// after it yet — makes it match nothing at all. The unprefixed and DSML
+/// spellings are covered by the fixed literal list `probe` also holds on
+/// (`"<invoke "`, `"<function"`, `"<|DSML"`, `"<｜DSML"`), but an XML
+/// namespace prefix is open-ended and cannot be enumerated the same way;
+/// this regex recognizes the tag structurally instead, so a stream split
+/// mid-namespace still holds the fragment back.
+static OPEN_START_RE: LazyLock<Option<Regex>> =
+    LazyLock::new(|| Regex::new(&format!(r"(?is)<{PREFIX}(?:invoke|function)\b")).ok());
+
 /// A closing tag ending an invoke: its own, `</function>`, or a stray
 /// `</tool_call>` some templates substitute.
 static CLOSE_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
