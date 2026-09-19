@@ -129,8 +129,7 @@ fn a_nullable_type_array_still_drives_scalar_coercion() {
 
 #[test]
 fn boolean_false_spellings_are_coerced() {
-    let schema =
-        json!({ "type": "object", "properties": { "b": { "type": "boolean" } } });
+    let schema = json!({ "type": "object", "properties": { "b": { "type": "boolean" } } });
     for spelling in ["false", "False", "FALSE"] {
         assert_eq!(
             coerce_to_schema(json!({ "b": spelling }), &schema),
@@ -142,8 +141,7 @@ fn boolean_false_spellings_are_coerced() {
 
 #[test]
 fn an_array_typed_string_that_decodes_to_a_scalar_is_wrapped() {
-    let schema =
-        json!({ "type": "object", "properties": { "list": { "type": "array" } } });
+    let schema = json!({ "type": "object", "properties": { "list": { "type": "array" } } });
     assert_eq!(
         coerce_to_schema(json!({ "list": "5" }), &schema),
         json!({ "list": [5] })
@@ -193,8 +191,7 @@ fn a_native_object_value_is_coerced_by_its_nested_schema() {
 
 #[test]
 fn an_array_without_an_items_schema_is_left_unchanged() {
-    let schema =
-        json!({ "type": "object", "properties": { "list": { "type": "array" } } });
+    let schema = json!({ "type": "object", "properties": { "list": { "type": "array" } } });
     assert_eq!(
         coerce_to_schema(json!({ "list": ["a", 1, true] }), &schema),
         json!({ "list": ["a", 1, true] })
