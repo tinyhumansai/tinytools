@@ -49,7 +49,10 @@ fn harmony_channel_with_empty_target_is_skipped_and_next_call_found() {
     // later one that does.
     let response = "<|channel|>commentary to= <|message|>ignored<|end|><|channel|>commentary to=functions.read<|message|>{\"path\":\"a\"}<|call|>tail";
     let (text, calls) = parse(response);
-    assert_eq!(text, "tail");
+    assert_eq!(
+        text,
+        "<|channel|>commentary to= <|message|>ignored<|end|>\ntail"
+    );
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].name, "read");
     assert_eq!(calls[0].arguments["path"], "a");
