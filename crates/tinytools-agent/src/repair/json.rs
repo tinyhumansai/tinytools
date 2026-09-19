@@ -455,21 +455,18 @@ pub fn quote_bare_keys(s: &str) -> String {
 
         match ch {
             '"' | '\'' if expect_key && matches!(stack.last(), Some(Container::Object)) => {
-                match take_quoted_key(&s[idx..]) {
-                    Some((key, consumed)) => {
-                        out.push('"');
-                        out.push_str(&key.replace('\\', r"\\").replace('"', "\\\""));
-                        out.push('"');
-                        while chars.peek().is_some_and(|&(next, _)| next < idx + consumed) {
-                            chars.next();
-                        }
-                        expect_key = false;
+                if let Some((key, consumed)) = take_quoted_key(&s[idx..]) {
+                    out.push('"');
+                    out.push_str(&key.replace('\\', r"\\").replace('"', "\\\""));
+                    out.push('"');
+                    while chars.peek().is_some_and(|&(next, _)| next < idx + consumed) {
+                        chars.next();
                     }
-                    None => {
-                        in_string = true;
-                        expect_key = false;
-                        out.push(ch);
-                    }
+                    expect_key = false;
+                } else {
+                    in_string = true;
+                    expect_key = false;
+                    out.push(ch);
                 }
             }
             '"' => {

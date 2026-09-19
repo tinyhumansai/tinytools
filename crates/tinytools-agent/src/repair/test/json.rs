@@ -32,7 +32,7 @@ fn repairs_single_quoted_and_mismatched_keys() {
 #[test]
 fn single_quoted_values_are_left_unrepaired() {
     // An apostrophe in a value is ordinary English; never rewrite it.
-    assert_eq!(recover_object(r#"{'city':'Paris'}"#), None);
+    assert_eq!(recover_object(r"{'city':'Paris'}"), None);
 }
 
 #[test]

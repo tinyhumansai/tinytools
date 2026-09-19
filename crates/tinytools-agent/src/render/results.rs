@@ -165,6 +165,7 @@ fn neutralize_protocol_tags(value: &str) -> Cow<'_, str> {
 /// escaped ([`escape_attribute`]); the output is the body, so only protocol
 /// tag openers are neutralized ([`neutralize_protocol_tags`]) and the rest
 /// reaches the model byte-for-byte.
+#[must_use]
 pub fn format_results(results: &[ToolOutcome]) -> Vec<TranscriptEntry> {
     // The overwhelmingly common shape: nothing marked, one framed batch. Kept as
     // its own branch so an unmarked round allocates exactly what it always did.
@@ -241,6 +242,7 @@ fn frame_batch(results: &[ToolOutcome]) -> String {
 /// narrative into `TranscriptEntry::AssistantToolCalls::text` replays an
 /// assistant turn with no visible call, followed by a `<tool_result>` turn
 /// that answers nothing the model can see.
+#[must_use]
 pub fn to_provider_messages(history: &[TranscriptEntry]) -> Vec<DialectMessage> {
     history
         .iter()

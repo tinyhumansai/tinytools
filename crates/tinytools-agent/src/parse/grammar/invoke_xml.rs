@@ -5,7 +5,7 @@
 //! tag prefix and the attribute spelling:
 //!
 //! * Claude's native form, `<invoke name="read"><parameter name="path">…`;
-//! * DeepSeek DSML, `<｜DSML｜invoke name="read">…</｜DSML｜invoke>` inside a
+//! * `DeepSeek` DSML, `<｜DSML｜invoke name="read">…</｜DSML｜invoke>` inside a
 //!   `<｜DSML｜tool_calls>` wrapper — with single or doubled bars, fullwidth
 //!   or ASCII, and an optional space after the marker (`<｜｜DSML｜｜ invoke`);
 //! * namespaced variants such as `<atem:invoke name="default.terminal">`;
@@ -83,7 +83,7 @@ impl Grammar for InvokeXml {
             ">",
             mode,
         );
-        prefer_pending(self.probe_decided(text, from, mode), pending)
+        prefer_pending(Self::probe_decided(text, from, mode), pending)
     }
 
     fn openers(&self) -> &'static [&'static str] {
@@ -104,7 +104,7 @@ impl Grammar for InvokeXml {
 
 impl InvokeXml {
     /// The next block whose opener is fully present.
-    fn probe_decided(&self, text: &str, from: usize, mode: ScanMode) -> Probe {
+    fn probe_decided(text: &str, from: usize, mode: ScanMode) -> Probe {
         let (Some(open_re), Some(wrapper_re), Some(close_re)) =
             (OPEN_RE.as_ref(), WRAPPER_RE.as_ref(), CLOSE_RE.as_ref())
         else {
@@ -140,8 +140,7 @@ impl InvokeXml {
         let name = open
             .get(1)
             .or_else(|| open.get(2))
-            .map(|m| m.as_str().trim())
-            .unwrap_or("");
+            .map_or("", |m| m.as_str().trim());
         let start = from + open_match.start();
         let body_start = from + open_match.end();
         let after = &text[body_start..];
@@ -203,8 +202,7 @@ fn decode_arguments(body: &str) -> serde_json::Value {
         let key = cap
             .get(1)
             .or_else(|| cap.get(2))
-            .map(|m| m.as_str().trim())
-            .unwrap_or("");
+            .map_or("", |m| m.as_str().trim());
         if key.is_empty() {
             continue;
         }

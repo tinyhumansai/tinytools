@@ -4,7 +4,7 @@
 //! template without decoding the template's special tokens, the call arrives
 //! as the raw tokens. Two families are common enough to matter:
 //!
-//! * **DeepSeek** (R1, V3):
+//! * **`DeepSeek`** (R1, V3):
 //!   `<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function<｜tool▁sep｜>NAME\n```json\n{…}\n```<｜tool▁call▁end｜><｜tool▁calls▁end｜>`,
 //!   or the shorter `<｜tool▁call▁begin｜>NAME<｜tool▁sep｜>{…}<｜tool▁call▁end｜>`;
 //! * **Kimi K2**:
@@ -42,7 +42,7 @@ static WRAPPER_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     Regex::new(r"<[|｜]tool[▁_]calls(?:[▁_]section)?[▁_](?:begin|end)[|｜]>").ok()
 });
 
-/// DeepSeek's name/arguments separator.
+/// `DeepSeek`'s name/arguments separator.
 static SEP_RE: LazyLock<Option<Regex>> =
     LazyLock::new(|| Regex::new(r"<[|｜]tool[▁_]sep[|｜]>").ok());
 
@@ -68,7 +68,7 @@ impl Grammar for Sentinel {
             ">",
             mode,
         );
-        prefer_pending(self.probe_decided(text, from, options, mode), pending)
+        prefer_pending(Self::probe_decided(text, from, options, mode), pending)
     }
 
     fn openers(&self) -> &'static [&'static str] {
@@ -83,13 +83,7 @@ impl Grammar for Sentinel {
 
 impl Sentinel {
     /// The next block whose opener is fully present.
-    fn probe_decided(
-        &self,
-        text: &str,
-        from: usize,
-        options: &ParseOptions<'_>,
-        mode: ScanMode,
-    ) -> Probe {
+    fn probe_decided(text: &str, from: usize, options: &ParseOptions<'_>, mode: ScanMode) -> Probe {
         let (Some(begin_re), Some(end_re), Some(wrapper_re)) = (
             CALL_BEGIN_RE.as_ref(),
             CALL_END_RE.as_ref(),

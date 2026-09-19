@@ -83,28 +83,25 @@ impl StreamScrubber {
         let scan = scan(&self.buf, &options, ScanMode::Stream);
 
         let mut text = String::new();
-        let consumed = match scan.pending {
-            Some(start) => {
-                for range in &scan.kept {
+        let consumed = if let Some(start) = scan.pending {
+            for range in &scan.kept {
+                text.push_str(&self.buf[range.clone()]);
+            }
+            start
+        } else {
+            let mut consumed = self.buf.len();
+            let last = scan.kept.len().saturating_sub(1);
+            for (index, range) in scan.kept.iter().enumerate() {
+                if index == last {
+                    let tail = &self.buf[range.clone()];
+                    let hold = hold_from(tail);
+                    text.push_str(&tail[..hold]);
+                    consumed = range.start + hold;
+                } else {
                     text.push_str(&self.buf[range.clone()]);
                 }
-                start
             }
-            None => {
-                let mut consumed = self.buf.len();
-                let last = scan.kept.len().saturating_sub(1);
-                for (index, range) in scan.kept.iter().enumerate() {
-                    if index == last {
-                        let tail = &self.buf[range.clone()];
-                        let hold = hold_from(tail);
-                        text.push_str(&tail[..hold]);
-                        consumed = range.start + hold;
-                    } else {
-                        text.push_str(&self.buf[range.clone()]);
-                    }
-                }
-                consumed
-            }
+            consumed
         };
         let (calls, diagnostics) = resolve_names(scan.calls, scan.diagnostics, &options);
         self.buf.drain(..consumed);

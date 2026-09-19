@@ -5,7 +5,7 @@
 //! own, and gateways garble the tag markers themselves:
 //!
 //! * spelling variants `<toolcall>`, `<tool-call>`, and the bare `<invoke>`;
-//! * an attribute form `<tool_call id="call_0">` (Hermes / DeepSeek
+//! * an attribute form `<tool_call id="call_0">` (Hermes / `DeepSeek`
 //!   templates);
 //! * sentinel pipes leaked into the markers, in any position:
 //!   `<|tool_call>…<tool_call|>`, `<|tool_call|>…<|tool_call|>`,
@@ -81,7 +81,7 @@ impl Grammar for Tagged {
             ">",
             mode,
         );
-        prefer_pending(self.probe_decided(text, from, options, mode), pending)
+        prefer_pending(Self::probe_decided(text, from, options, mode), pending)
     }
 
     fn openers(&self) -> &'static [&'static str] {
@@ -101,13 +101,7 @@ impl Grammar for Tagged {
 
 impl Tagged {
     /// The next block whose opener is fully present.
-    fn probe_decided(
-        &self,
-        text: &str,
-        from: usize,
-        options: &ParseOptions<'_>,
-        mode: ScanMode,
-    ) -> Probe {
+    fn probe_decided(text: &str, from: usize, options: &ParseOptions<'_>, mode: ScanMode) -> Probe {
         let Some(opener) = next_opener(text, from) else {
             return Probe::None;
         };

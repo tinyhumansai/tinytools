@@ -3,7 +3,7 @@
 //! The shapes accepted, all seen from real models:
 //!
 //! * `{"name": "x", "arguments": {…}}` — canonical;
-//! * `{"function": {"name": "x", "arguments": "{…}"}}` — the OpenAI wire
+//! * `{"function": {"name": "x", "arguments": "{…}"}}` — the `OpenAI` wire
 //!   entry, with stringified arguments;
 //! * `{"tool_calls": [ … ]}` — a whole wire message (Minimax);
 //! * `[ {…}, {…} ]` — a bare array of calls;

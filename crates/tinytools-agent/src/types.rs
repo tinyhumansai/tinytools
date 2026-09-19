@@ -21,7 +21,7 @@ pub enum CallSource {
     /// `<invoke name="…"><parameter name="…">` XML: Claude, DeepSeek DSML,
     /// namespaced variants, and `<function=…>` forms.
     InvokeXml,
-    /// Chat-template sentinel tokens leaked verbatim: DeepSeek-R1
+    /// Chat-template sentinel tokens leaked verbatim: `DeepSeek`-R1
     /// `<｜tool▁call▁begin｜>` and Kimi `<|tool_call_begin|>`.
     Sentinel,
     /// gpt-oss Harmony `<|channel|>commentary to=…<|message|>…<|call|>`.

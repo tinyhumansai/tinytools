@@ -1,4 +1,4 @@
-//! OpenAI Harmony (gpt-oss) tool calls rendered as text.
+//! `OpenAI` Harmony (gpt-oss) tool calls rendered as text.
 //!
 //! A gpt-oss model served without Harmony decoding writes its channel tokens
 //! straight into the content:
