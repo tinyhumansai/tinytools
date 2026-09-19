@@ -59,7 +59,11 @@ pub fn fence_ranges(text: &str) -> Vec<Range<usize>> {
                 // block often puts the next protocol marker on the same
                 // line (```` ```<｜tool▁call▁end｜> ````).
                 if fence_char == open_char && fence_len >= open_len {
-                    ranges.push(start..offset);
+                    // The range ends at the closing backticks, not the line
+                    // end, so a marker on the same line is scanned.
+                    let indent = line.len() - stripped.len();
+                    let fence_bytes: usize = stripped.chars().take(fence_len).map(char::len_utf8).sum();
+                    ranges.push(start..line_start + indent + fence_bytes);
                     open = None;
                 }
             }

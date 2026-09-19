@@ -38,7 +38,7 @@ fn fence_ranges_cover_languages_and_unclosed_fences() {
     let text = "a\n```rust\nx\n```\nb\n~~~js\ny\n";
     let ranges = fence_ranges(text);
     assert_eq!(ranges.len(), 2);
-    assert_eq!(&text[ranges[0].clone()], "```rust\nx\n```\n");
+    assert_eq!(&text[ranges[0].clone()], "```rust\nx\n```");
     assert_eq!(ranges[1].end, text.len());
     assert!(fence_ranges("```\nplain\n```").is_empty());
     assert!(fence_ranges("```tool_call\n{}\n```").is_empty());
