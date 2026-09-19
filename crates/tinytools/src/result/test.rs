@@ -44,8 +44,7 @@ fn mixed_content_joins_in_order() {
                 text: "line2".into(),
             },
         ],
-        is_error: false,
-        markdown_formatted: None,
+        ..ToolResult::default()
     };
     assert_eq!(r.text(), "line1\nline2");
     let output = r.output();
