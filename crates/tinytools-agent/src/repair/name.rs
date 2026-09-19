@@ -69,7 +69,7 @@ pub fn resolve(raw: &str, known: &[String]) -> NameResolution {
     }
 
     let normalized = normalize(unprefixed);
-    if let Some(hit) = known.iter().find(|k| normalize(k) == normalized) {
+    if let Some(hit) = unique_by_normalized(&normalized, known) {
         return resolved(original, hit);
     }
 
@@ -85,7 +85,7 @@ pub fn resolve(raw: &str, known: &[String]) -> NameResolution {
         };
         stem = shorter;
         let stem_norm = normalize(&stem);
-        if let Some(hit) = known.iter().find(|k| normalize(k) == stem_norm) {
+        if let Some(hit) = unique_by_normalized(&stem_norm, known) {
             return resolved(original, hit);
         }
     }
