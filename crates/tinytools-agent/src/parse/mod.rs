@@ -89,10 +89,24 @@ pub fn parse_text(text: &str, options: &ParseOptions<'_>) -> ParseOutcome {
 /// Name resolution and the diagnostics it produces.
 fn finalize(
     text: String,
+    calls: Vec<ParsedToolCall>,
+    diagnostics: Vec<ParseDiagnostic>,
+    options: &ParseOptions<'_>,
+) -> ParseOutcome {
+    let (calls, diagnostics) = resolve_names(calls, diagnostics, options);
+    ParseOutcome {
+        text,
+        calls,
+        diagnostics,
+    }
+}
+
+/// Resolves every text-recovered call's name against the offered tools.
+pub(crate) fn resolve_names(
     mut calls: Vec<ParsedToolCall>,
     mut diagnostics: Vec<ParseDiagnostic>,
     options: &ParseOptions<'_>,
-) -> ParseOutcome {
+) -> (Vec<ParsedToolCall>, Vec<ParseDiagnostic>) {
     for call in &mut calls {
         if call.source == CallSource::Native {
             continue;
@@ -115,11 +129,7 @@ fn finalize(
             });
         }
     }
-    ParseOutcome {
-        text,
-        calls,
-        diagnostics,
-    }
+    (calls, diagnostics)
 }
 
 /// The result of one scan pass.
