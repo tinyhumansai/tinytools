@@ -123,7 +123,7 @@ fn mistral_v11_args_with_unparseable_json_is_not_a_call() {
 
 #[test]
 fn mistral_v11_non_object_arguments_are_recovered_into_an_object() {
-    let response = "[TOOL_CALLS]get_weather[ARGS]\"Paris\"";
+    let response = "[TOOL_CALLS]get_weather[ARGS][1,2,3]";
     let (_, calls) = parse(response);
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].name, "get_weather");
