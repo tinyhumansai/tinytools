@@ -90,13 +90,19 @@ impl Grammar for InvokeXml {
     }
 
     fn probe(&self, text: &str, from: usize, _options: &ParseOptions<'_>, mode: ScanMode) -> Probe {
-        let pending = pending_opener(
+        let literal_pending = pending_opener(
             text,
             from,
             &["<invoke ", "<function", "<|DSML", "<｜DSML"],
             ">",
             mode,
         );
+        let namespaced_pending =
+            (mode == ScanMode::Stream).then(|| Self::pending_namespaced_open(text, from));
+        let pending = [literal_pending, namespaced_pending.flatten()]
+            .into_iter()
+            .flatten()
+            .min();
         prefer_pending(Self::probe_decided(text, from, mode), pending)
     }
 
