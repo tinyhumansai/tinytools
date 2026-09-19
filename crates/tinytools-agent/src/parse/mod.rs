@@ -194,7 +194,23 @@ pub(crate) fn scan(text: &str, options: &ParseOptions<'_>, mode: ScanMode) -> Sc
 
         match best {
             None => {
-                out.kept.push(from..text.len());
+                // A fence still open at the end of the text has not yet
+                // received its closing fence (or its protected content is
+                // still arriving). Releasing it now, mid-stream, would drop
+                // the only record that the next fragment is still inside
+                // it — so hold it back like any other pending opener rather
+                // than draining it as narrative.
+                let open_fence = (mode == ScanMode::Stream)
+                    .then(|| protected::open_fence_start(text))
+                    .flatten()
+                    .filter(|&start| start >= from);
+                match open_fence {
+                    Some(start) => {
+                        out.kept.push(from..start);
+                        out.pending = Some(start);
+                    }
+                    None => out.kept.push(from..text.len()),
+                }
                 break;
             }
             Some(Probe::Pending { start }) => {
