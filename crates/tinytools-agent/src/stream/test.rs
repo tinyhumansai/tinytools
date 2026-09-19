@@ -139,7 +139,8 @@ fn a_fenced_example_split_across_fragments_never_leaks_a_call() {
     );
     assert!(first.calls.is_empty());
 
-    let second = s.feed("echo <tool_call>{\"name\":\"x\",\"arguments\":{}}</tool_call>\n```\nafter");
+    let second =
+        s.feed("echo <tool_call>{\"name\":\"x\",\"arguments\":{}}</tool_call>\n```\nafter");
     assert!(
         second.calls.is_empty(),
         "the fenced example must not dispatch a call: {second:?}"
