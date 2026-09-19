@@ -54,7 +54,11 @@ pub fn fence_ranges(text: &str) -> Vec<Range<usize>> {
                 }
             }
             Some((start, open_char, open_len)) => {
-                if fence_char == open_char && fence_len >= open_len && info.is_empty() {
+                // CommonMark forbids an info string on a closing fence; here
+                // it is allowed, because a model closing a fenced argument
+                // block often puts the next protocol marker on the same
+                // line (```` ```<｜tool▁call▁end｜> ````).
+                if fence_char == open_char && fence_len >= open_len {
                     ranges.push(start..offset);
                     open = None;
                 }

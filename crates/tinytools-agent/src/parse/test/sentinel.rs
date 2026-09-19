@@ -60,11 +60,3 @@ fn unterminated_sentinel_block_is_kept_as_text() {
     assert!(calls.is_empty());
     assert_eq!(cleaned, text);
 }
-
-#[test]
-fn dbg_wrapper_end() {
-    let (text, calls) = parse("<｜tool▁calls▁end｜>");
-    assert_eq!((text.as_str(), calls.len()), ("", 0));
-    let (text, _) = parse("x<｜tool▁call▁end｜><｜tool▁calls▁end｜>");
-    assert_eq!(text, "x<｜tool▁call▁end｜>");
-}

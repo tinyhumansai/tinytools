@@ -116,8 +116,11 @@ impl InvokeXml {
         let open = open_re.captures(hay);
 
         // A wrapper tag before the next invoke is furniture: remove it alone.
+        // A bare `<tool_calls>` opener with no invoke anywhere after it is a
+        // prose mention (the JSON key, say) and stays.
         if let Some(w) = wrapper
             && open.as_ref().is_none_or(|o| w.start() < o.get(0).map_or(usize::MAX, |m| m.start()))
+            && (open.is_some() || is_closer_or_prefixed(w.as_str()))
         {
             return Probe::Found(Block {
                 start: from + w.start(),
@@ -176,6 +179,14 @@ impl InvokeXml {
             )]),
         })
     }
+}
+
+/// Whether a wrapper tag is a closer or carries a DSML / namespace prefix —
+/// either is unambiguous protocol furniture even with no invoke in sight.
+fn is_closer_or_prefixed(tag: &str) -> bool {
+    let inner = &tag[1..];
+    inner.starts_with('/') || !inner.starts_with(|c: char| c.is_ascii_alphabetic())
+        || inner.contains(':')
 }
 
 /// Arguments from parameter children or a JSON body.
