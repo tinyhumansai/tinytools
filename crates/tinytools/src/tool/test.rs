@@ -96,6 +96,7 @@ fn the_declaration_defaults_are_the_conservative_answer() {
     assert!(!tool.is_concurrency_safe(&Value::Null));
     assert!(!tool.external_effect());
     assert!(!tool.external_effect_with_args(&Value::Null));
+    assert!(!tool.return_direct());
     assert!(tool.max_result_size_chars().is_none());
     assert_eq!(tool.timeout_policy(&Value::Null), ToolTimeout::Inherit);
     assert!(tool.host_extension().is_none());
