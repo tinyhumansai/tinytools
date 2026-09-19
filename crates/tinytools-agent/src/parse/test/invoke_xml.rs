@@ -1,4 +1,4 @@
-//! `<invoke>` XML: Claude, DeepSeek DSML, namespaced, and `<function=>` forms.
+//! `<invoke>` XML: Claude, `DeepSeek` DSML, namespaced, and `<function=>` forms.
 
 use super::{parse, parse_known};
 use crate::types::CallSource;

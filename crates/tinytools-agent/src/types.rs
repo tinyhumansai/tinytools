@@ -18,7 +18,7 @@ pub enum CallSource {
     /// `<tool_call>{json}</tool_call>` and its spelling variants, including
     /// fenced ```` ```tool_call ```` blocks.
     TaggedJson,
-    /// `<invoke name="…"><parameter name="…">` XML: Claude, DeepSeek DSML,
+    /// `<invoke name="…"><parameter name="…">` XML: Claude, `DeepSeek` DSML,
     /// namespaced variants, and `<function=…>` forms.
     InvokeXml,
     /// Chat-template sentinel tokens leaked verbatim: `DeepSeek`-R1
