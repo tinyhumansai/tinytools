@@ -56,7 +56,7 @@ impl Grammar for Sentinel {
     }
 
     fn probe(&self, text: &str, from: usize, options: &ParseOptions<'_>, mode: ScanMode) -> Probe {
-        let pending = pending_opener(text, from, Self::openers(&Self), ">", mode);
+        let pending = pending_opener(text, from, self.openers(), ">", mode);
         prefer_pending(Self::probe_decided(text, from, options, mode), pending)
     }
 
