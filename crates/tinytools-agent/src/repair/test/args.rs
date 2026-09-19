@@ -100,6 +100,125 @@ fn scalars_are_coerced_to_the_declared_type() {
 }
 
 #[test]
+fn coerce_to_schema_leaves_a_non_object_value_untouched() {
+    let schema = json!({ "type": "object", "properties": { "n": { "type": "integer" } } });
+    assert_eq!(
+        coerce_to_schema(json!(["not", "an", "object"]), &schema),
+        json!(["not", "an", "object"])
+    );
+}
+
+#[test]
+fn coerce_to_schema_with_no_declared_properties_passes_the_object_through() {
+    let schema = json!({ "type": "object" });
+    let arguments = json!({ "x": 1, "y": "z" });
+    assert_eq!(coerce_to_schema(arguments.clone(), &schema), arguments);
+}
+
+#[test]
+fn a_nullable_type_array_still_drives_scalar_coercion() {
+    let schema = json!({
+        "type": "object",
+        "properties": { "n": { "type": ["null", "integer"] } }
+    });
+    assert_eq!(
+        coerce_to_schema(json!({ "n": "5" }), &schema),
+        json!({ "n": 5 })
+    );
+}
+
+#[test]
+fn boolean_false_spellings_are_coerced() {
+    let schema =
+        json!({ "type": "object", "properties": { "b": { "type": "boolean" } } });
+    for spelling in ["false", "False", "FALSE"] {
+        assert_eq!(
+            coerce_to_schema(json!({ "b": spelling }), &schema),
+            json!({ "b": false }),
+            "{spelling}"
+        );
+    }
+}
+
+#[test]
+fn an_array_typed_string_that_decodes_to_a_scalar_is_wrapped() {
+    let schema =
+        json!({ "type": "object", "properties": { "list": { "type": "array" } } });
+    assert_eq!(
+        coerce_to_schema(json!({ "list": "5" }), &schema),
+        json!({ "list": [5] })
+    );
+}
+
+#[test]
+fn a_native_array_value_is_coerced_by_item_schema() {
+    let schema = json!({
+        "type": "object",
+        "properties": { "list": { "type": "array", "items": { "type": "integer" } } }
+    });
+    assert_eq!(
+        coerce_to_schema(json!({ "list": ["1", "2"] }), &schema),
+        json!({ "list": [1, 2] })
+    );
+}
+
+#[test]
+fn an_object_typed_string_that_fails_to_decode_is_left_as_a_string() {
+    let schema = json!({
+        "type": "object",
+        "properties": { "nested": { "type": "object" } }
+    });
+    assert_eq!(
+        coerce_to_schema(json!({ "nested": "not json" }), &schema),
+        json!({ "nested": "not json" })
+    );
+}
+
+#[test]
+fn a_native_object_value_is_coerced_by_its_nested_schema() {
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "nested": {
+                "type": "object",
+                "properties": { "k": { "type": "integer" } }
+            }
+        }
+    });
+    assert_eq!(
+        coerce_to_schema(json!({ "nested": { "k": "7" } }), &schema),
+        json!({ "nested": { "k": 7 } })
+    );
+}
+
+#[test]
+fn an_array_without_an_items_schema_is_left_unchanged() {
+    let schema =
+        json!({ "type": "object", "properties": { "list": { "type": "array" } } });
+    assert_eq!(
+        coerce_to_schema(json!({ "list": ["a", 1, true] }), &schema),
+        json!({ "list": ["a", 1, true] })
+    );
+}
+
+#[test]
+fn array_items_that_are_json_encoded_strings_are_decoded_per_item_schema() {
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "list": {
+                "type": "array",
+                "items": { "type": "object", "properties": { "k": { "type": "integer" } } }
+            }
+        }
+    });
+    assert_eq!(
+        coerce_to_schema(json!({ "list": ["{\"k\":\"7\"}"] }), &schema),
+        json!({ "list": [{ "k": 7 }] })
+    );
+}
+
+#[test]
 fn unconvertible_scalars_are_left_for_the_validator() {
     let schema = json!({ "type": "object", "properties": { "n": { "type": "integer" }, "l": { "type": "array" } } });
     assert_eq!(
