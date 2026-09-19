@@ -162,6 +162,24 @@ fn normalize(s: &str) -> String {
     out.trim_matches('_').to_string()
 }
 
+/// The single known tool whose normalized form equals `normalized`, or
+/// `None` when zero or several tie — normalization collapses distinct raw
+/// names (`read_file` and `read-file` both become `read_file`), so a
+/// non-unique hit must not silently pick whichever offered tool sorts
+/// first.
+fn unique_by_normalized<'a>(normalized: &str, known: &'a [String]) -> Option<&'a str> {
+    let mut hit: Option<&str> = None;
+    for candidate in known {
+        if normalize(candidate) == normalized {
+            if hit.is_some() {
+                return None;
+            }
+            hit = Some(candidate);
+        }
+    }
+    hit
+}
+
 /// The single known tool within [`MAX_EDIT_DISTANCE`] of `needle`, or `None`
 /// when there are zero or several — an ambiguous match must not dispatch.
 fn unique_fuzzy<'a>(needle: &str, known: &'a [String]) -> Option<&'a str> {
