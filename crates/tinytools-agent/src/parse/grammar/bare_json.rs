@@ -36,7 +36,7 @@ pub(crate) fn parse(
         Ok(value) => value,
         // A non-object that parsed strictly is not a call; do not "repair"
         // it into one. Only an object-shaped candidate is worth recovering.
-        Err(_) if first == '{' => recover_object(candidate)?,
+        Err(_) if first == '{' => recover_whole_object(candidate)?,
         Err(_) => return None,
     };
 
