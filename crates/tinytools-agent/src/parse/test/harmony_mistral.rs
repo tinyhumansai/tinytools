@@ -151,7 +151,29 @@ fn mistral_marker_with_no_call_yet_is_held_while_streaming() {
     let mut s = StreamScrubber::new();
     let first = s.feed("[TOOL_CALLS]get_wea");
     assert_eq!(first.text, "", "a pending marker must be held");
-    let second = s.feed("ther[ARGS]{\"city\":\"Paris\"}tail");
-    assert_eq!(second.text, "tail");
+    // The trailing `!` cannot be part of a v11 tool name, so it disambiguates
+    // the block as finished; trailing alphanumeric text alone would still be
+    // ambiguous with a directly-appended continuation call and must be held
+    // (see `mistral_v11_second_call_split_across_fragments_is_not_lost`).
+    let second = s.feed("ther[ARGS]{\"city\":\"Paris\"}tail!");
+    assert_eq!(second.text, "tail!");
     assert_eq!(second.calls[0].name, "get_weather");
+}
+
+#[test]
+fn mistral_v11_second_call_split_across_fragments_is_not_lost() {
+    // The v11 form lets a second call follow directly with no fresh
+    // `[TOOL_CALLS]` marker. A naive streamer that finalizes the block the
+    // moment the first `NAME[ARGS]{...}` completes drops the second call
+    // the instant a fragment boundary falls between them.
+    use crate::stream::StreamScrubber;
+
+    let mut s = StreamScrubber::new();
+    let first = s.feed("[TOOL_CALLS]a[ARGS]{\"x\":1}");
+    assert!(first.calls.is_empty(), "must hold until disambiguated");
+    let second = s.feed("b[ARGS]{\"y\":2} done!");
+    assert_eq!(second.calls.len(), 2);
+    assert_eq!(second.calls[0].name, "a");
+    assert_eq!(second.calls[1].name, "b");
+    assert_eq!(second.text, " done!");
 }
