@@ -15,9 +15,11 @@
 use std::sync::Arc;
 
 use super::ToolDialect;
-use super::text;
 use super::types::{DialectMessage, DialectResponse, ToolCallFormat, ToolOutcome, TranscriptEntry};
-use crate::{PFormatRegistry, ParsedToolCall, parse_tool_calls_with_pformat};
+use crate::parse::parse_text;
+use crate::render;
+use crate::types::ParseOptions;
+use crate::{PFormatRegistry, ParsedToolCall};
 use tinytools::ToolSpec;
 
 /// Positional tool calling, driven by a registry of parameter layouts.
@@ -56,52 +58,20 @@ impl PFormatDialect {
     /// The protocol block — **protocol only**, no catalogue.
     ///
     /// The signatures live in the prompt's tool section, rendered by
-    /// [`super::catalogue::render_pformat_catalogue`] from the same schemas
+    /// [`crate::render::render_pformat_catalogue`] from the same schemas
     /// this dialect parses against. Repeating them here is the "tools listed
     /// twice" pattern the JSON dialect is stuck with, and it means adding a
     /// tool changes the prompt in one place instead of two.
     #[must_use]
     pub fn instructions() -> String {
-        let mut instructions = String::new();
-        instructions.push_str("## Tool Use Protocol\n\n");
-        instructions.push_str(
-            "Tool calls use **P-Format** (Parameter-Format): compact, slot-indexed, \
-             pipe-delimited syntax wrapped in `<tool_call>` tags. ~80% cheaper on tokens \
-             than JSON.\n\n",
-        );
-        instructions
-            .push_str("```\n<tool_call>\nget_weather[0|London|1|metric]\n</tool_call>\n```\n\n");
-        instructions.push_str(
-            "**Rules:**\n\
-             - Form: `name[index|value|index|value|...]`. Each value is preceded by the slot \
-               number it fills, taken from that tool's `Call as:` signature in the `## Tools` \
-               section above.\n\
-             - **Send only the arguments you mean to send.** To pass just the third slot, \
-               write `name[2|value]` — there are no empty slots to count.\n\
-             - The signature shows each slot as `index|<name>`, e.g. \
-               `search[0|<query>|1|<limit>]`. `<name>` is a placeholder: replace it with the \
-               value, and do not send the name itself.\n\
-             - Empty calls: `name[]` for zero-arg tools, or for a call sending no arguments.\n\
-             - A call whose indices are missing, non-numeric, or not in the signature is \
-               **rejected** — it will not run. Copy the numbers from the signature.\n\
-             - Escapes inside argument values: `\\|` → `|`, `\\]` → `]`, `\\\\` → `\\`.\n\
-             - You may emit multiple `<tool_call>` blocks in a single response. Each tag holds \
-               exactly one call.\n\
-             - After tool execution, results appear in `<tool_result>` tags. Continue reasoning \
-               with the results until you can give a final answer.\n\
-             - If you genuinely need a complex nested argument that p-format can't express, \
-               you may fall back to the JSON form: \
-               `<tool_call>{\"name\":\"...\",\"arguments\":{...}}</tool_call>`. Prefer p-format \
-               for everything else.\n\n",
-        );
-        instructions
+        render::pformat_instructions()
     }
 }
 
 impl ToolDialect for PFormatDialect {
     fn parse_response(&self, response: &DialectResponse) -> (String, Vec<ParsedToolCall>) {
-        let (text, calls) =
-            parse_tool_calls_with_pformat(response.text_or_empty(), self.registry.as_ref());
+        let options = ParseOptions::new().with_registry(self.registry.as_ref());
+        let (text, calls) = parse_text(response.text_or_empty(), &options).into_parts();
         crate::telemetry::debug!(
             parse_mode = "pformat_combined",
             parsed_tool_calls = calls.len(),
@@ -111,7 +81,7 @@ impl ToolDialect for PFormatDialect {
     }
 
     fn format_results(&self, results: &[ToolOutcome]) -> Vec<TranscriptEntry> {
-        text::format_results(results)
+        render::format_results(results)
     }
 
     fn prompt_instructions(&self, _tools: &[ToolSpec]) -> String {
@@ -119,7 +89,7 @@ impl ToolDialect for PFormatDialect {
     }
 
     fn to_provider_messages(&self, history: &[TranscriptEntry]) -> Vec<DialectMessage> {
-        text::to_provider_messages(history)
+        render::to_provider_messages(history)
     }
 
     fn should_send_tool_specs(&self) -> bool {

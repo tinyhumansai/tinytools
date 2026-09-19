@@ -29,26 +29,25 @@
 //! never decides what is allowed to *happen*. That boundary is what keeps a
 //! host's security policy in the host, where it can be audited.
 
-mod catalogue;
 mod native;
 mod pairing;
 mod pformat;
-mod text;
 mod types;
 mod xml;
 
-pub use catalogue::{CATALOGUE_HEADING, render_json_catalogue, render_pformat_catalogue};
+pub use crate::render::{
+    CATALOGUE_HEADING, TOOL_RESULTS_PREFIX, render_json_catalogue, render_pformat_catalogue,
+};
 pub use native::NativeDialect;
 pub use pairing::pair_tool_cycles;
 pub use pformat::PFormatDialect;
-pub use text::TOOL_RESULTS_PREFIX;
 pub use types::{
     DialectMessage, DialectResponse, DialectRole, NativeToolCall, ToolCallFormat, ToolOutcome,
     ToolResultEntry, TranscriptEntry,
 };
 pub use xml::XmlDialect;
 
-use crate::ParsedToolCall;
+use crate::types::ParsedToolCall;
 use tinytools::ToolSpec;
 
 /// One complete way of speaking tools to a model.

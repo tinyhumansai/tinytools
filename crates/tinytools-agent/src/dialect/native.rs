@@ -17,7 +17,8 @@ use super::types::{
     DialectMessage, DialectResponse, ToolCallFormat, ToolOutcome, ToolResultEntry, TranscriptEntry,
 };
 use super::xml::XmlDialect;
-use crate::ParsedToolCall;
+use crate::render;
+use crate::types::ParsedToolCall;
 use tinytools::ToolSpec;
 
 /// Call id used when an outcome carries none. Only reachable if a host hands
@@ -48,9 +49,10 @@ impl ToolDialect for NativeDialect {
         let calls: Vec<ParsedToolCall> = response
             .tool_calls
             .iter()
-            .map(|call| ParsedToolCall {
-                name: call.name.clone(),
-                arguments: match serde_json::from_str::<Value>(&call.arguments) {
+            .map(|call| ParsedToolCall::native(
+                call.id.clone(),
+                call.name.clone(),
+                match serde_json::from_str::<Value>(&call.arguments) {
                     Ok(value @ Value::Object(_)) => value,
                     Ok(other) => {
                         #[cfg(not(feature = "tracing"))]
@@ -73,8 +75,7 @@ impl ToolDialect for NativeDialect {
                         Value::Object(serde_json::Map::new())
                     }
                 },
-                id: Some(call.id.clone()),
-            })
+            ))
             .collect();
 
         if !calls.is_empty() {
@@ -144,15 +145,7 @@ impl ToolDialect for NativeDialect {
         // No catalogue: the provider already has the full schemas in the
         // request. What the model still needs is the behavioural half —
         // notably that narrating an intention is not calling a tool.
-        [
-            "## Tool Use Protocol",
-            "",
-            "When a tool is needed, emit tool calls directly via the model's native tool-calling output.",
-            "Do not only narrate intent (for example, avoid \"Let me check...\") without emitting the tool call.",
-            "After tool results are provided, continue reasoning and then produce the final answer.",
-            "",
-        ]
-        .join("\n")
+        render::native_instructions()
     }
 
     fn to_provider_messages(&self, history: &[TranscriptEntry]) -> Vec<DialectMessage> {
