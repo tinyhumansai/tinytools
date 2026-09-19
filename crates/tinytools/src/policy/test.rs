@@ -143,6 +143,7 @@ fn fully_populated_policy_has_a_pinned_json_wire_shape() {
             sandbox: SandboxMode::Required,
             max_result_bytes: Some(8_192),
             streaming: true,
+            replay: ToolReplay::Safe,
         },
         access: ToolAccess {
             workspace: WorkspaceAccess::Scoped,
