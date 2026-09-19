@@ -84,7 +84,7 @@ impl ParsedToolCall {
 /// safe, because the anti-phantom rules in [`crate::parse`] do not depend on
 /// any of it. Supplying `known_tools` is what unlocks name repair and the
 /// alias-tolerant bare-object path.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct ParseOptions<'a> {
     /// The tools the model was actually offered this turn. Enables name
     /// repair (`terminal" parameter=…` → `terminal`) and lets a bare JSON
