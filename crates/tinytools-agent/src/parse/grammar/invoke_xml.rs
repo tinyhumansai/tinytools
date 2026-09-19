@@ -22,7 +22,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::{Block, Decoded, Grammar, Probe, ScanMode};
+use super::{Block, Decoded, Grammar, Probe, ScanMode, pending_opener, prefer_pending};
 use crate::repair::json::recover_object;
 use crate::types::{CallSource, ParseOptions, ParsedToolCall};
 
@@ -76,6 +76,35 @@ impl Grammar for InvokeXml {
     }
 
     fn probe(&self, text: &str, from: usize, _options: &ParseOptions<'_>, mode: ScanMode) -> Probe {
+        let pending = pending_opener(
+            text,
+            from,
+            &["<invoke ", "<function", "<|DSML", "<｜DSML"],
+            ">",
+            mode,
+        );
+        prefer_pending(self.probe_decided(text, from, mode), pending)
+    }
+
+    fn openers(&self) -> &'static [&'static str] {
+        &[
+            "<invoke ",
+            "<function",
+            "<|DSML",
+            "<｜DSML",
+            "</|DSML",
+            "</｜DSML",
+            "<tool_calls>",
+            "<function_calls>",
+            "</tool_calls>",
+            "</function_calls>",
+        ]
+    }
+}
+
+impl InvokeXml {
+    /// The next block whose opener is fully present.
+    fn probe_decided(&self, text: &str, from: usize, mode: ScanMode) -> Probe {
         let (Some(open_re), Some(wrapper_re), Some(close_re)) =
             (OPEN_RE.as_ref(), WRAPPER_RE.as_ref(), CLOSE_RE.as_ref())
         else {
@@ -146,22 +175,6 @@ impl Grammar for InvokeXml {
                 CallSource::InvokeXml,
             )]),
         })
-    }
-
-    fn openers(&self) -> &'static [&'static str] {
-        &[
-            "<invoke ",
-            "<function",
-            "<|DSML",
-            "<｜DSML",
-            "<｜｜DSML",
-            "</|DSML",
-            "</｜DSML",
-            "<tool_calls>",
-            "<function_calls>",
-            "</tool_calls>",
-            "</function_calls>",
-        ]
     }
 }
 

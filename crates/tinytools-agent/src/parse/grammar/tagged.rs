@@ -26,7 +26,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::{Block, Decoded, Grammar, Probe, ScanMode, find_ci};
+use super::{Block, Decoded, Grammar, Probe, ScanMode, find_ci, pending_opener, prefer_pending};
 use crate::parse::call_object::{AliasPolicy, read_calls};
 use crate::parse::json_values::{
     extract_first_json_value_with_end, extract_json_values, find_json_end,
@@ -75,6 +75,40 @@ impl Grammar for Tagged {
     }
 
     fn probe(&self, text: &str, from: usize, options: &ParseOptions<'_>, mode: ScanMode) -> Probe {
+        let pending = pending_opener(
+            text,
+            from,
+            &["<tool_call", "<toolcall", "<tool-call", "<|tool_call"],
+            ">",
+            mode,
+        );
+        prefer_pending(self.probe_decided(text, from, options, mode), pending)
+    }
+
+    fn openers(&self) -> &'static [&'static str] {
+        &[
+            "<tool_call",
+            "<toolcall",
+            "<tool-call",
+            "<|tool_call",
+            "<invoke>",
+            "```tool_call",
+            "```toolcall",
+            "```tool-call",
+            "```invoke",
+        ]
+    }
+}
+
+impl Tagged {
+    /// The next block whose opener is fully present.
+    fn probe_decided(
+        &self,
+        text: &str,
+        from: usize,
+        options: &ParseOptions<'_>,
+        mode: ScanMode,
+    ) -> Probe {
         let Some(opener) = next_opener(text, from) else {
             return Probe::None;
         };
@@ -144,20 +178,6 @@ impl Grammar for Tagged {
             end: text.len(),
             decoded: Decoded::Verbatim,
         })
-    }
-
-    fn openers(&self) -> &'static [&'static str] {
-        &[
-            "<tool_call",
-            "<toolcall",
-            "<tool-call",
-            "<|tool_call",
-            "<invoke>",
-            "```tool_call",
-            "```toolcall",
-            "```tool-call",
-            "```invoke",
-        ]
     }
 }
 

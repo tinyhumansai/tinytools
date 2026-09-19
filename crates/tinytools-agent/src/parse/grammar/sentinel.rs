@@ -19,7 +19,7 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use super::{Block, Decoded, Grammar, Probe, ScanMode};
+use super::{Block, Decoded, Grammar, Probe, ScanMode, pending_opener, prefer_pending};
 use crate::parse::call_object::{AliasPolicy, read_calls};
 use crate::repair::json::{recover_object, strip_code_fence};
 use crate::types::{CallSource, ParseOptions, ParsedToolCall};
@@ -56,6 +56,30 @@ impl Grammar for Sentinel {
     }
 
     fn probe(&self, text: &str, from: usize, options: &ParseOptions<'_>, mode: ScanMode) -> Probe {
+        let pending = pending_opener(
+            text,
+            from,
+            &["<|tool_call", "<｜tool▁call", "<|tool_calls", "<｜tool▁calls"],
+            ">",
+            mode,
+        );
+        prefer_pending(self.probe_decided(text, from, options, mode), pending)
+    }
+
+    fn openers(&self) -> &'static [&'static str] {
+        &["<|tool_call", "<｜tool▁call", "<|tool_calls", "<｜tool▁calls"]
+    }
+}
+
+impl Sentinel {
+    /// The next block whose opener is fully present.
+    fn probe_decided(
+        &self,
+        text: &str,
+        from: usize,
+        options: &ParseOptions<'_>,
+        mode: ScanMode,
+    ) -> Probe {
         let (Some(begin_re), Some(end_re), Some(wrapper_re)) =
             (CALL_BEGIN_RE.as_ref(), CALL_END_RE.as_ref(), WRAPPER_RE.as_ref())
         else {
@@ -107,10 +131,6 @@ impl Grammar for Sentinel {
             end: block_end,
             decoded,
         })
-    }
-
-    fn openers(&self) -> &'static [&'static str] {
-        &["<|tool_call", "<｜tool▁call", "<|tool_calls", "<｜tool▁calls"]
     }
 }
 
