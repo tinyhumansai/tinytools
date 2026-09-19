@@ -32,6 +32,30 @@ fn harmony_call_with_start_prefix_and_no_terminator_parses_in_batch() {
 }
 
 #[test]
+fn harmony_channel_with_target_but_no_message_is_not_a_call_in_batch_mode() {
+    // No `<|message|>` ever arrives, so a batch parse cannot know whether a
+    // call is coming; the header is left as ordinary text rather than
+    // guessed at.
+    let response = "<|channel|>commentary to=functions.read still thinking";
+    let (text, calls) = parse(response);
+    assert!(calls.is_empty());
+    assert_eq!(text, response);
+}
+
+#[test]
+fn harmony_channel_with_empty_target_is_skipped_and_next_call_found() {
+    // `to=` with nothing but whitespace after it names no tool, so the
+    // grammar skips past that channel message and keeps scanning for a
+    // later one that does.
+    let response = "<|channel|>commentary to= <|message|>ignored<|end|><|channel|>commentary to=functions.read<|message|>{\"path\":\"a\"}<|call|>tail";
+    let (text, calls) = parse(response);
+    assert_eq!(text, "tail");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "read");
+    assert_eq!(calls[0].arguments["path"], "a");
+}
+
+#[test]
 fn mistral_v3_array_form_parses() {
     let response =
         "[TOOL_CALLS] [{\"name\": \"get_weather\", \"arguments\": {\"city\": \"Paris\"}}]";
