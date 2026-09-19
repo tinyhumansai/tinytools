@@ -62,3 +62,57 @@ fn unterminated_sentinel_block_is_kept_as_text() {
     assert!(calls.is_empty());
     assert_eq!(cleaned, text);
 }
+
+#[test]
+fn a_sentinel_block_that_decodes_to_nothing_is_malformed() {
+    let response = "<|tool_call_begin|>garbage that is not json<|tool_call_end|>";
+    let outcome = parse_known(response, &[]);
+    assert!(outcome.calls.is_empty());
+    assert!(
+        outcome
+            .diagnostics
+            .iter()
+            .any(|d| matches!(d, ParseDiagnostic::MalformedBlock { .. }))
+    );
+}
+
+#[test]
+fn kimi_argument_begin_with_no_name_before_it_is_not_a_call() {
+    let response = "<|tool_call_begin|><|tool_call_argument_begin|>{}<|tool_call_end|>";
+    let (_, calls) = parse(response);
+    assert!(calls.is_empty());
+}
+
+#[test]
+fn kimi_name_keeps_a_non_numeric_colon_suffix() {
+    let response =
+        "<|tool_call_begin|>functions.foo:bar<|tool_call_argument_begin|>{}<|tool_call_end|>";
+    let (_, calls) = parse(response);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "foo:bar");
+}
+
+#[test]
+fn kimi_call_with_no_arguments_after_the_separator_defaults_to_empty_object() {
+    let response = "<|tool_call_begin|>functions.read<|tool_call_argument_begin|><|tool_call_end|>";
+    let (_, calls) = parse(response);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "read");
+    assert_eq!(calls[0].arguments, serde_json::json!({}));
+}
+
+#[test]
+fn deepseek_function_prefixed_name_with_no_newline_still_parses() {
+    let response = "<|tool_call_begin|>function<|tool_sep|>get_weather<|tool_call_end|>";
+    let (_, calls) = parse(response);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "get_weather");
+    assert_eq!(calls[0].arguments, serde_json::json!({}));
+}
+
+#[test]
+fn deepseek_sep_with_an_empty_name_is_not_a_call() {
+    let response = "<|tool_call_begin|><|tool_sep|>{}<|tool_call_end|>";
+    let (_, calls) = parse(response);
+    assert!(calls.is_empty());
+}
