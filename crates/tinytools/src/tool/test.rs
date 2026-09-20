@@ -96,6 +96,7 @@ fn the_declaration_defaults_are_the_conservative_answer() {
     assert!(!tool.is_concurrency_safe(&Value::Null));
     assert!(!tool.external_effect());
     assert!(!tool.external_effect_with_args(&Value::Null));
+    assert!(!tool.return_direct());
     assert!(tool.max_result_size_chars().is_none());
     assert_eq!(tool.timeout_policy(&Value::Null), ToolTimeout::Inherit);
     assert!(tool.host_extension().is_none());
@@ -325,4 +326,40 @@ fn overridden_declarations_are_visible_through_a_trait_object() {
     assert_eq!(erased.permission_level(), PermissionLevel::Execute);
     assert!(erased.external_effect());
     assert_eq!(erased.timeout_policy(&Value::Null), ToolTimeout::Unbounded);
+}
+
+/// A tool whose entire job is to hand the model's answer straight back, so it
+/// overrides the static [`Tool::return_direct`] default.
+struct FinalAnswerTool;
+
+#[async_trait]
+impl Tool for FinalAnswerTool {
+    fn name(&self) -> &str {
+        "final_answer"
+    }
+
+    fn description(&self) -> &str {
+        "Ends the loop with the model's answer"
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({ "type": "object" })
+    }
+
+    async fn execute(&self, _args: Value) -> anyhow::Result<ToolResult> {
+        Ok(ToolResult::success("done"))
+    }
+
+    fn return_direct(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn a_tool_can_declare_a_static_return_direct_default() {
+    let tool = FinalAnswerTool;
+    assert!(tool.return_direct());
+
+    let erased: &dyn Tool = &FinalAnswerTool;
+    assert!(erased.return_direct());
 }

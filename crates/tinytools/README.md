@@ -35,7 +35,77 @@ impl Tool for Echo {
 `Tool` describes a callable capability. Its result is a `ToolResult` block list
 with a reported-error flag and optional markdown rendering. `ToolSpec` is the
 model-visible declaration. `ToolRunContext` exposes only tool-relevant run
-facts: workspace, thread id, and output cap.
+facts: workspace, thread id, and output cap — plus `host_extension()`, the
+same type-erased escape hatch `Tool::host_extension` offers, so a tool written
+against one specific harness can downcast to that harness's full context.
+
+## Rich tool returns
+
+`ToolContent` has four block kinds: `Text`, `Json`, `Image`, and `File`.
+`Image` carries a MIME `media_type` plus `ImageData::{Base64, Url}`; `File`
+carries a display `name`, a `media_type`, and `FileData::{Base64, Url, Path}`.
+`ToolResult::text()`, `output()`, and `output_for_llm()` render `Text`
+verbatim, pretty-print `Json`, skip `Json` from `text()` specifically (as
+before), and render a short placeholder for `Image`/`File` — `[image
+image/png]`, `[file report.pdf (application/pdf)]` — so a model still gets a
+sensible turn even when a renderer does not special-case the new block kinds.
+
+`ToolResult` carries three more optional surfaces beyond `content` and
+`markdown_formatted`:
+
+- `follow_up: Vec<ToolContent>` — content the caller should present to the
+  model as a *separate* user message after the tool result (a screenshot, a
+  generated document). It is never included in `text()`, `output()`, or
+  `output_for_llm()`; a host that wants to honour it reads the field directly.
+  Attach it with `with_follow_up(..)`.
+- `metadata: Option<serde_json::Value>` — host-only data (trace ids, raw
+  provider payloads) that is never shown to the model. Attach it with
+  `with_metadata(..)`.
+- `control: Option<ToolControl>` — loop-control hints a harness may honour:
+  `return_direct: Option<bool>`, `terminate`, `goto: Option<String>`, and
+  `state_update: Option<serde_json::Value>`. Set them with the builders
+  `return_direct()`, `dont_return_direct()`, `terminate()`, `with_goto(..)`,
+  and `with_state_update(..)`, which lazily create the `ToolControl`.
+  `return_direct` is tri-state, not a defaulted `bool`: a call that only used
+  `with_goto(..)`, `with_state_update(..)`, or `terminate()` leaves it `None`
+  rather than an implicit `false`, so it cannot silently suppress a tool's
+  static `true` default — see "Static and per-call return-direct" below.
+
+`ToolResult::retry(message)` and `ToolResult::failed(message)` both set
+`is_error`, same as `error(message)`, but additionally tag
+`error_kind: Option<ToolErrorKind>` as `Retry` or `Failed` — Pydantic AI's
+`ModelRetry` versus a permanent tool failure — so a harness can decide whether
+to loop the model back in or surface the failure as final.
+
+Every new field is `#[serde(default)]` and, where it can be empty or absent,
+`skip_serializing_if`, so a `ToolResult` persisted before these fields existed
+still decodes, and a plain result's wire shape is unchanged.
+
+## Static and per-call return-direct
+
+`Tool::return_direct()` is a static, per-tool default (`false`) for a tool
+whose entire purpose is to hand the model's answer straight back — a
+final-answer or handoff tool overrides it to `true`. `ToolResult::control`'s
+`return_direct: Option<bool>` is the per-*call* override on `ToolControl`; a
+harness should prefer `Some(..)` on the result it just received over the
+tool's static declaration, and fall back to the static declaration when it is
+`None`. `None` is the outcome of a call that never touched `return_direct` —
+including one that only used `with_goto(..)`, `with_state_update(..)`, or
+`terminate()` — so it must not be read as an explicit override. Call
+`return_direct()` for `Some(true)`, or `dont_return_direct()` for `Some(false)`
+to force the call to *not* return directly even when the tool's static
+declaration is `true`.
+
+## Replay after a crash
+
+`ToolPolicy`'s `ToolRuntime` carries `replay: ToolReplay`, mirroring pi's
+`replay` classification: whether an orphaned in-flight call for a tool may be
+safely re-executed after a crash. It defaults to `ToolReplay::Never`; a tool
+that is idempotent or otherwise safe to repeat declares `ToolReplay::Safe`
+through its `ToolPolicy`. This lives on the existing declarative policy
+surface rather than as a new `Tool` trait method, consistent with how every
+other runtime requirement (timeout, retries, cancellation, sandboxing) is
+already expressed there.
 
 `ToolPolicy` is the complete host-readable declaration around a call:
 

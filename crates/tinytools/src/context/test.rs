@@ -56,3 +56,35 @@ fn an_implementor_is_readable_through_the_trait_object() {
         Some(PathBuf::from("/tmp/worktree"))
     );
 }
+
+/// A context carrying a host-owned payload behind the erased hook.
+struct Hosted {
+    tag: HostTag,
+}
+
+#[derive(Debug, PartialEq)]
+struct HostTag(&'static str);
+
+impl ToolRunContext for Hosted {
+    fn host_extension(&self) -> Option<&(dyn std::any::Any + Send + Sync)> {
+        Some(&self.tag)
+    }
+}
+
+#[test]
+fn the_default_host_extension_is_absent() {
+    let erased: &dyn ToolRunContext = &Bare;
+    assert!(erased.host_extension().is_none());
+}
+
+#[test]
+fn a_host_recovers_its_own_context_by_downcasting() {
+    let hosted = Hosted {
+        tag: HostTag("call-7"),
+    };
+    let erased: &dyn ToolRunContext = &hosted;
+    let tag = erased
+        .host_extension()
+        .and_then(|any| any.downcast_ref::<HostTag>());
+    assert_eq!(tag, Some(&HostTag("call-7")));
+}

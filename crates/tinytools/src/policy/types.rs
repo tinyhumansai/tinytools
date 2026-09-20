@@ -90,6 +90,24 @@ impl ToolDisplay {
     }
 }
 
+/// Whether an orphaned in-flight call may be safely re-executed after a
+/// crash.
+///
+/// A host that persists an in-flight call and recovers after a crash has to
+/// decide whether to replay it. Pi's `replay` classification is the reference
+/// design: most tools are not safe to blindly re-run (a payment, a send), so
+/// [`Self::Never`] is the default and a tool must opt into [`Self::Safe`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolReplay {
+    /// An orphaned call must not be re-executed after a crash.
+    #[default]
+    Never,
+    /// An orphaned call may be safely re-executed after a crash — the tool is
+    /// idempotent or otherwise safe to repeat.
+    Safe,
+}
+
 /// Runtime requirements a tool declares for safe execution.
 ///
 /// A host decides how to apply these requirements. In particular, this type
@@ -117,6 +135,10 @@ pub struct ToolRuntime {
     pub max_result_bytes: Option<usize>,
     /// Whether the tool can emit streaming result fragments.
     pub streaming: bool,
+    /// Whether an orphaned in-flight call for this tool may be safely
+    /// re-executed after a crash. See [`ToolReplay`].
+    #[serde(default)]
+    pub replay: ToolReplay,
 }
 
 /// Access requirements a tool declares before a host exposes or runs it.
