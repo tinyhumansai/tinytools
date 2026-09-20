@@ -1,63 +1,46 @@
 //! Agent-facing tool-call protocols.
 //!
 //! `tinytools` owns the vocabulary a callable tool exposes. This crate owns the
-//! model-facing protocol around those declarations: parsing calls, rendering
-//! catalogues and result blocks, and replaying tool cycles.
+//! model-facing protocol around those declarations — and owns it **once**, for
+//! every consumer:
 //!
-//! A model that supports native tool use hands back structured calls and none
-//! of this is needed. Everything else — prompt-guided models, local models,
-//! providers whose native mode is unavailable or disabled — emits tool calls as
-//! *text*, in whatever shape the model was trained to produce. This module
-//! turns that text back into calls.
+//! * [`parse`] turns model text back into calls, through every surface syntax
+//!   a model has been seen to use;
+//! * [`repair`] recovers damaged JSON, damaged tool names, and mis-shaped
+//!   arguments after a call has been located;
+//! * [`stream`] scrubs the same markup from a live text stream;
+//! * [`render`] produces what the model reads: the catalogue, the protocol
+//!   block, the result envelope;
+//! * [`dialect`] binds one rendering to one parser so they cannot drift.
 //!
-//! ## Why it is this forgiving
-//!
-//! Each accommodation here exists because a model actually produced it and the
-//! alternative was dropping a well-formed call and burning an agent iteration.
-//! Concretely, the parsers accept `<tool_call>` tags in several spellings,
-//! fenced `tool_call` blocks, bare JSON objects, Anthropic-style
-//! `<invoke name="…"><parameter name="…">` XML, and the compact positional
-//! P-Format syntax.
-//!
-//! The permissiveness is bounded on purpose, and the boundary is worth knowing
-//! before widening anything:
-//!
-//! * **Argument keys are aliased; tool names are not.** A model drifting from
-//!   `arguments` to `args`/`parameters`/`params`/`input` still yields a usable
-//!   call. The *name* stays strict, because loosening it risks reading a plain
-//!   JSON answer as a tool call in the whole-response path — turning an ordinary
-//!   reply into a phantom invocation.
-//! * **The generic `input` alias is only honoured behind an explicit marker**
-//!   (a `tool_calls` array, a `<tool_call>` tag, a fenced block). Untagged text
-//!   does not get it.
-//! * **P-Format refuses to invent argument names for an unknown tool**, so a
-//!   model cannot tunnel arbitrary JSON through by guessing a tool name that
-//!   does not exist.
+//! A model that supports native tool use hands back structured calls and only
+//! [`dialect::NativeDialect`] is involved. Everything else — prompt-guided
+//! models, local models, providers whose native mode is unavailable, and
+//! native models that narrate a call as text anyway — goes through the rest.
 //!
 //! ## What the host still owns
 //!
-//! This module takes **schemas**, never a tool trait object. A host's tool type
-//! is its own vocabulary, and depending on it here would defeat the point — so
-//! [`pformat::build_registry`] takes `(name, schema)` pairs and the host keeps a
-//! one-line adapter over its own tool slice.
-//!
-//! **Executing** a tool stays host-side: permission checks, sandboxing,
-//! approval gates and timeouts are the host's policy and belong where they can
-//! be audited. Everything *around* execution — the catalogue the model reads,
-//! the results it is shown, the transcript it is replayed — is not
-//! host-specific, and lives in [`dialect`].
+//! This crate takes **schemas**, never a tool trait object, and never executes
+//! anything. Permission checks, sandboxing, approval gates, timeouts, the
+//! unknown-tool policy, and the minting of call ids are the host's, where they
+//! can be audited. See [`parse`] for the bounds on how forgiving the parsers
+//! are and why.
 
 pub mod dialect;
-pub(crate) mod parse;
+pub mod parse;
 pub(crate) mod pformat;
+pub mod render;
+pub mod repair;
+pub mod stream;
 mod telemetry;
+pub mod types;
 
-// The two entry points, plus the building blocks a host legitimately reaches
-// for on its own. `extract_json_values` in particular is not a test helper:
-// pulling the first JSON object out of model prose is how a host checks a
-// required-output contract, which has nothing to do with tool calls.
+/// The tool vocabulary this crate renders and parses against, re-exported so
+/// a consumer that only speaks the protocol need not name `tinytools` itself.
+pub use tinytools;
+
 pub use parse::{
-    ParsedToolCall, extract_json_values, parse_arguments_value, parse_glm_style_tool_calls,
+    extract_json_values, parse_arguments_value, parse_glm_style_tool_calls, parse_text,
     parse_tool_call_value, parse_tool_calls, parse_tool_calls_from_json_value,
     parse_tool_calls_with_pformat,
 };
@@ -65,3 +48,5 @@ pub use pformat::{
     PFormatParamType, PFormatRegistry, PFormatToolParams, build_registry, parse_call,
     render_signature, render_signature_from_schema,
 };
+pub use stream::{StreamScrubber, StreamStep};
+pub use types::{CallSource, ParseDiagnostic, ParseOptions, ParseOutcome, ParsedToolCall};

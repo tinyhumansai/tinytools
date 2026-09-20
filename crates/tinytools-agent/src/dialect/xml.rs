@@ -5,12 +5,16 @@
 //! spells out its argument names, and the catalogue carries full schemas — and
 //! it is the one that works everywhere, which is why it stays the fallback
 //! rather than being retired.
+//!
+//! Parsing is not limited to the advertised form. A model told to write
+//! `<tool_call>` may answer in whatever its template prefers, so the response
+//! goes through every grammar in [`crate::parse`].
 
 use super::ToolDialect;
-use super::catalogue::render_json_catalogue;
-use super::text;
 use super::types::{DialectMessage, DialectResponse, ToolCallFormat, ToolOutcome, TranscriptEntry};
-use crate::{ParsedToolCall, parse_tool_calls};
+use crate::parse::parse_text;
+use crate::render;
+use crate::types::{ParseOptions, ParsedToolCall};
 use tinytools::ToolSpec;
 
 /// JSON-in-tag tool calling.
@@ -18,34 +22,20 @@ use tinytools::ToolSpec;
 pub struct XmlDialect;
 
 impl XmlDialect {
-    /// Recover tool calls from raw model text.
+    /// Recover tool calls from raw model text with default options.
     ///
     /// Shared with the other two dialects: p-format falls back to it per tag,
     /// and the native dialect uses it to recover calls a model narrated as text
     /// despite having a structured channel available.
     #[must_use]
     pub fn parse_text(text: &str) -> (String, Vec<ParsedToolCall>) {
-        parse_tool_calls(text)
+        parse_text(text, &ParseOptions::new()).into_parts()
     }
 
     /// The protocol block plus the full-schema catalogue.
-    ///
-    /// This dialect embeds its own catalogue rather than leaving it to the
-    /// prompt's tool section, because the schemas it needs are the protocol:
-    /// a model writing `{"arguments": {…}}` by hand has to know the argument
-    /// names, and there is nowhere else in the prompt that tells it.
     #[must_use]
     pub fn instructions(tools: &[ToolSpec]) -> String {
-        let mut instructions = String::new();
-        instructions.push_str("## Tool Use Protocol\n\n");
-        instructions
-            .push_str("To use a tool, wrap a JSON object in <tool_call></tool_call> tags:\n\n");
-        instructions.push_str(
-            "```\n<tool_call>\n{\"name\": \"tool_name\", \"arguments\": {\"param\": \"value\"}}\n</tool_call>\n```\n\n",
-        );
-        instructions.push_str("### Available Tools\n\n");
-        instructions.push_str(&render_json_catalogue(tools));
-        instructions
+        render::json_instructions(tools)
     }
 }
 
@@ -61,7 +51,7 @@ impl ToolDialect for XmlDialect {
     }
 
     fn format_results(&self, results: &[ToolOutcome]) -> Vec<TranscriptEntry> {
-        text::format_results(results)
+        render::format_results(results)
     }
 
     fn prompt_instructions(&self, tools: &[ToolSpec]) -> String {
@@ -69,7 +59,7 @@ impl ToolDialect for XmlDialect {
     }
 
     fn to_provider_messages(&self, history: &[TranscriptEntry]) -> Vec<DialectMessage> {
-        text::to_provider_messages(history)
+        render::to_provider_messages(history)
     }
 
     fn should_send_tool_specs(&self) -> bool {
