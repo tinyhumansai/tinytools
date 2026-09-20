@@ -42,6 +42,16 @@ fn paths_outside_every_root_are_refused() {
 }
 
 #[test]
+fn relative_roots_and_candidates_are_anchored_to_the_current_directory() {
+    let current_dir = std::env::current_dir().expect("test process has a current directory");
+    let ws = WorkspaceDescriptor::new("workspace");
+
+    assert!(ws.allows(Path::new("workspace/src/lib.rs")));
+    assert!(ws.allows(&current_dir.join("workspace/src/lib.rs")));
+    assert!(!ws.allows(Path::new("elsewhere/src/lib.rs")));
+}
+
+#[test]
 fn dot_segments_are_resolved_before_the_comparison() {
     let ws = WorkspaceDescriptor::new("/work/agent-a");
     assert!(ws.allows(Path::new("/work/agent-a/./src/../src/main.rs")));
