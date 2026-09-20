@@ -167,10 +167,28 @@ impl ToolResult {
     }
 
     /// Marks the result as one the harness should return directly to the
-    /// caller without further model interaction.
+    /// caller without further model interaction, overriding the tool's
+    /// static [`Tool::return_direct`][crate::Tool::return_direct] default for
+    /// this call.
     #[must_use]
     pub fn return_direct(mut self) -> Self {
-        self.control_mut().return_direct = true;
+        self.control_mut().return_direct = Some(true);
+        self
+    }
+
+    /// Marks the result as one that should *not* be returned directly, even
+    /// if the tool declares a static `true`
+    /// [`Tool::return_direct`][crate::Tool::return_direct] default.
+    ///
+    /// Use this to explicitly disable the static default for a single call.
+    /// Combining another control builder such as [`Self::with_goto`] or
+    /// [`Self::with_state_update`] with this call leaves the per-call
+    /// override unset (`None`), which is not the same as calling this
+    /// method: an unset override falls back to the tool's static default,
+    /// while this method forces `false` regardless of that default.
+    #[must_use]
+    pub fn dont_return_direct(mut self) -> Self {
+        self.control_mut().return_direct = Some(false);
         self
     }
 
