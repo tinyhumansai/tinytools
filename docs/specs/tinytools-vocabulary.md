@@ -140,6 +140,56 @@ section on the trait itself in `crates/tinytools/src/tool/types.rs`, and
   `crates/tinytools/Cargo.toml`) and this specification stay aligned with the
   public surface as it evolves.
 
+## Extension: rich results, replay classification, and a host escape hatch
+
+Landed after the crate's initial acceptance (tracked in
+[`../plans/tinytools-vocabulary.md`](../plans/tinytools-vocabulary.md#task-7-rich-toolresult-replay-classification-and-a-host-escape-hatch)),
+this section specifies the additions below. All are additive to the wire shape
+(new fields default and are omitted when absent) but not source-compatible —
+see "Versioning" — so they shipped as a `0.2.0` → `0.3.0` minor bump.
+
+- **`ToolContent::Image` / `ToolContent::File`** extend the block-list result
+  with image and file blocks (`ImageData` / `FileData`, each `Base64`, `Url`,
+  or `Path`), alongside the existing `Text` and `Json` blocks.
+- **`ToolResult::follow_up: Vec<ToolContent>`** carries content a caller should
+  present to the model as a *separate* message after the tool result — a
+  screenshot or document the next turn should read — rather than folding it
+  into the result itself. It is deliberately excluded from `text()`,
+  `output()`, and `output_for_llm()`; a host that wants to honour it reads the
+  field directly.
+- **`ToolResult::metadata: Option<serde_json::Value>`** is host-only data
+  (trace ids, raw provider payloads) never shown to the model.
+- **`ToolResult::control: Option<ToolControl>`** carries loop-control hints a
+  harness may honour: `terminate`, `goto: Option<String>`,
+  `state_update: Option<serde_json::Value>`, and `return_direct:
+  Option<bool>`. `return_direct` is tri-state, not a defaulted `bool`: `None`
+  means this call did not express an opinion and a harness falls back to the
+  tool's static [`Tool::return_direct`] default; `Some(true)` /
+  `Some(false)` are explicit per-call overrides. This tri-state is load
+  bearing — a call that only used `with_goto`, `with_state_update`, or
+  `terminate` must not be read as silently disabling a tool's static `true`
+  declaration. See "Static and per-call return-direct" in
+  `crates/tinytools/README.md`.
+- **`ToolResult::error_kind: Option<ToolErrorKind>`** distinguishes a reported
+  failure the model should retry (`Retry`, set by `ToolResult::retry`) from
+  one it should not (`Failed`, set by `ToolResult::failed`) — modelled on
+  Pydantic AI's `ModelRetry` versus a permanent failure. `None` (the
+  historical shape) means the caller did not classify the failure.
+- **`ToolRuntime::replay: ToolReplay`** classifies whether an orphaned
+  in-flight call for a tool may be safely re-executed after a crash,
+  mirroring pi's `replay` classification. It defaults to `ToolReplay::Never`;
+  an idempotent tool declares `ToolReplay::Safe` through its `ToolPolicy`.
+  This lives on the existing declarative policy surface rather than a new
+  `Tool` trait method, consistent with how every other runtime requirement
+  (timeout, retries, cancellation, sandboxing) is already expressed there.
+- **`ToolRunContext::host_extension`** is the same escape hatch as
+  `Tool::host_extension`: this crate has no business naming the harness's
+  context type, so a host implementor returns `Some(self)` as
+  `&(dyn Any + Send + Sync)` and a tool that knows which host it runs under
+  downcasts. Every other implementor returns `None` and pays nothing. A tool
+  that only needs the workspace, thread id, or output cap keeps using the
+  typed methods.
+
 ## Open questions
 
 - Whether `ToolResult`/`ToolContent` should ever adopt an actual MCP
