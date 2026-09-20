@@ -361,10 +361,30 @@ fn legacy_json_without_new_fields_still_deserializes() {
 #[test]
 fn default_control_round_trips_to_all_false_and_none() {
     let control = ToolControl::default();
-    assert!(!control.return_direct);
+    assert_eq!(control.return_direct, None);
     assert!(!control.terminate);
     assert_eq!(control.goto, None);
     assert_eq!(control.state_update, None);
+}
+
+#[test]
+fn a_control_created_by_another_builder_leaves_return_direct_unset() {
+    // A call that only used `with_goto`/`with_state_update`/`terminate` must
+    // not silently express an opinion on `return_direct`: a harness falls
+    // back to the tool's static default only when this stays `None`.
+    let r = ToolResult::success("done")
+        .with_goto("next")
+        .with_state_update(json!({"count": 1}))
+        .terminate();
+    let control = r.control.as_ref().expect("control set");
+    assert_eq!(control.return_direct, None);
+}
+
+#[test]
+fn dont_return_direct_forces_false_regardless_of_a_static_default() {
+    let r = ToolResult::success("done").dont_return_direct();
+    let control = r.control.as_ref().expect("control set");
+    assert_eq!(control.return_direct, Some(false));
 }
 
 #[test]
