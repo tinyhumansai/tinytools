@@ -164,7 +164,7 @@ see "Versioning" — so they shipped as a `0.2.0` → `0.3.0` minor bump.
   `state_update: Option<serde_json::Value>`, and `return_direct:
   Option<bool>`. `return_direct` is tri-state, not a defaulted `bool`: `None`
   means this call did not express an opinion and a harness falls back to the
-  tool's static [`Tool::return_direct`] default; `Some(true)` /
+  tool's static `Tool::return_direct` default; `Some(true)` /
   `Some(false)` are explicit per-call overrides. This tri-state is load
   bearing — a call that only used `with_goto`, `with_state_update`, or
   `terminate` must not be read as silently disabling a tool's static `true`
