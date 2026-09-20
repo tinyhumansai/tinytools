@@ -344,10 +344,19 @@ pub enum ToolErrorKind {
 /// decides whether and how to act on them.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ToolControl {
-    /// Return this result directly to the caller without further model
-    /// interaction.
-    #[serde(default)]
-    pub return_direct: bool,
+    /// Per-call override for returning this result directly to the caller
+    /// without further model interaction.
+    ///
+    /// Tri-state, not a defaulted `bool`: `None` means this call did not
+    /// express an opinion, so a harness should fall back to the tool's
+    /// static [`Tool::return_direct`][crate::Tool::return_direct] default
+    /// rather than treating an absent override as an explicit `false`. A
+    /// call that only used [`ToolResult::with_goto`],
+    /// [`ToolResult::with_state_update`], or [`ToolResult::terminate`] — none
+    /// of which touch this field — must not silently suppress a tool's
+    /// static `true` declaration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub return_direct: Option<bool>,
     /// End the agent loop after this call.
     #[serde(default)]
     pub terminate: bool,
