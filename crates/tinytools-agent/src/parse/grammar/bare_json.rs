@@ -16,7 +16,7 @@
 //! alone; `{"name":"Alice","input":"hi"}` is left alone.
 
 use crate::parse::call_object::{AliasPolicy, read_calls};
-use crate::repair::json::{recover_object, strip_code_fence};
+use crate::repair::json::{recover_whole_object, strip_code_fence};
 use crate::types::{CallSource, ParseOptions, ParsedToolCall};
 
 /// The calls in a whole-response JSON value, plus any `content` text it
@@ -36,7 +36,7 @@ pub(crate) fn parse(
         Ok(value) => value,
         // A non-object that parsed strictly is not a call; do not "repair"
         // it into one. Only an object-shaped candidate is worth recovering.
-        Err(_) if first == '{' => recover_object(candidate)?,
+        Err(_) if first == '{' => recover_whole_object(candidate)?,
         Err(_) => return None,
     };
 

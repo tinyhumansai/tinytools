@@ -32,6 +32,17 @@ fn harmony_call_with_start_prefix_and_no_terminator_parses_in_batch() {
 }
 
 #[test]
+fn harmony_start_prefix_is_consumed_as_furniture() {
+    // `<|start|>assistant` is documented as furniture that precedes the
+    // first channel of a turn; it must not leak into the narrative.
+    let response = "<|start|>assistant<|channel|>commentary to=functions.read<|message|>{\"path\":\"a\"}<|call|>";
+    let (text, calls) = parse(response);
+    assert!(text.is_empty(), "{text:?}");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "read");
+}
+
+#[test]
 fn harmony_channel_with_target_but_no_message_is_not_a_call_in_batch_mode() {
     // No `<|message|>` ever arrives, so a batch parse cannot know whether a
     // call is coming; the header is left as ordinary text rather than
@@ -158,6 +169,30 @@ fn mistral_marker_with_no_call_yet_is_held_while_streaming() {
     let second = s.feed("ther[ARGS]{\"city\":\"Paris\"}tail!");
     assert_eq!(second.text, "tail!");
     assert_eq!(second.calls[0].name, "get_weather");
+}
+
+#[test]
+fn mistral_v11_second_call_split_mid_args_bracket_is_not_lost() {
+    // The split falls after the second call's opening `[`, inside the
+    // `[ARGS]` marker itself rather than inside its name — a stream
+    // fragment boundary a naive name-only predicate does not recognize as
+    // still-ambiguous.
+    use crate::stream::StreamScrubber;
+
+    let mut s = StreamScrubber::new();
+    let first = s.feed("[TOOL_CALLS]a[ARGS]{}");
+    assert!(first.calls.is_empty(), "must hold until disambiguated");
+    let second = s.feed("b[");
+    assert!(second.calls.is_empty(), "must still hold: {second:?}");
+    let third = s.feed("ARGS]{}");
+    assert!(
+        third.calls.is_empty(),
+        "the block ends exactly at the fragment boundary, still ambiguous: {third:?}"
+    );
+    let flushed = s.flush();
+    assert_eq!(flushed.calls.len(), 2);
+    assert_eq!(flushed.calls[0].name, "a");
+    assert_eq!(flushed.calls[1].name, "b");
 }
 
 #[test]

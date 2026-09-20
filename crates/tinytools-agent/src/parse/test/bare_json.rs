@@ -73,6 +73,12 @@ fn bare_recovery_never_swallows_a_genuine_text_answer() {
         r#"{"name":42}"#,
         r#""just a string""#,
         "[1, 2, 3]",
+        // A damaged leading object followed by unrelated trailing prose (or
+        // another object) must not be recovered via the trailing-noise rung
+        // that `recover_object` allows for marker-delimited call bodies —
+        // bare JSON has no such marker, so the whole response must be the
+        // call.
+        r#"{"name":"shell","arguments":{"command":"x"}} explanation {}"#,
     ] {
         let (cleaned, calls) = parse(text);
         assert!(
@@ -81,6 +87,17 @@ fn bare_recovery_never_swallows_a_genuine_text_answer() {
         );
         assert_eq!(cleaned, text);
     }
+}
+
+#[test]
+fn parse_options_default_matches_new_and_allows_bare_json() {
+    // The struct doc says the default allows bare JSON; a derived `Default`
+    // would instead leave `allow_bare_json` at `bool`'s `false`.
+    let outcome = crate::parse::parse_text(
+        r#"{"name":"echo","arguments":{}}"#,
+        &ParseOptions::default(),
+    );
+    assert_eq!(outcome.calls.len(), 1);
 }
 
 #[test]

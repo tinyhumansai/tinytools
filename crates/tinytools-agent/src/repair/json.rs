@@ -59,8 +59,31 @@ const MAX_EXCESS_CLOSERS: usize = 50;
 /// after `serde_json::from_str` has already failed on `raw`; a well-formed
 /// object is returned unchanged by the first rung anyway, but the ladder is not
 /// free.
+///
+/// The final rung accepts a valid object followed by trailing noise — correct
+/// when `raw` is already known to be *inside* a call (a marker-delimited
+/// argument payload), where anything after the object is furniture, not data.
+/// A whole-response candidate has no such delimiter and must use
+/// [`recover_whole_object`] instead, which holds out for the entire candidate.
 #[must_use]
 pub fn recover_object(raw: &str) -> Option<Value> {
+    recover_ladder(raw, true)
+}
+
+/// [`recover_object`]'s ladder, but without the trailing-noise rung: the
+/// repaired object must account for the **entire** candidate.
+///
+/// For a whole-response grammar (bare JSON), accepting a valid leading object
+/// followed by unrelated trailing text would dispatch a call out of ordinary
+/// prose that merely starts with one — `{"name":"shell","arguments":{}}
+/// explanation follows` is not a call, it is prose that happens to start with
+/// one.
+#[must_use]
+pub fn recover_whole_object(raw: &str) -> Option<Value> {
+    recover_ladder(raw, false)
+}
+
+fn recover_ladder(raw: &str, allow_trailing_noise: bool) -> Option<Value> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
@@ -103,8 +126,12 @@ pub fn recover_object(raw: &str) -> Option<Value> {
         }
     }
 
-    // Rung 5: a valid leading object followed by trailing noise.
-    leading_object(candidate.trim())
+    // Rung 5: a valid leading object followed by trailing noise. Only when
+    // the caller has already established that trailing noise is expected.
+    if allow_trailing_noise {
+        return leading_object(candidate.trim());
+    }
+    None
 }
 
 /// Parses `s` strictly and keeps it only when it is an object.
@@ -169,14 +196,48 @@ pub fn strip_code_fence(raw: &str) -> &str {
         .map_or(trimmed, str::trim)
 }
 
-/// Removes every [`TEMPLATE_MARKERS`] occurrence.
+/// Removes every [`TEMPLATE_MARKERS`] occurrence **outside JSON string
+/// literals**.
+///
+/// A blind text-level replace would also strike a marker that is legitimate
+/// string *data* — `{"text":"<tool_call>hi</tool_call>"}` is a call whose
+/// argument happens to quote the marker, and stripping it there would
+/// silently corrupt the value the tool receives. This walks the text
+/// tracking whether it is inside a `"…"` span (honoring `\"` escapes) and
+/// only strips a marker match while outside one.
 #[must_use]
 pub fn strip_template_markers(raw: &str) -> String {
-    let mut out = raw.to_string();
-    for marker in TEMPLATE_MARKERS {
-        if out.contains(marker) {
-            out = out.replace(marker, "");
+    let mut out = String::with_capacity(raw.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut cursor = 0usize;
+    while cursor < raw.len() {
+        let rest = &raw[cursor..];
+        if !in_string
+            && let Some(marker) = TEMPLATE_MARKERS
+                .iter()
+                .find(|marker| rest.starts_with(*marker))
+        {
+            cursor += marker.len();
+            continue;
         }
+        // `cursor` only ever advances by a marker's byte length (ASCII, so
+        // always a char boundary) or by one full char below, so it is
+        // always a char boundary here too.
+        let ch = rest.chars().next().unwrap_or_default();
+        out.push(ch);
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+        } else if ch == '"' {
+            in_string = true;
+        }
+        cursor += ch.len_utf8();
     }
     out
 }

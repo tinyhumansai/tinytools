@@ -56,26 +56,26 @@ impl Grammar for Sentinel {
     }
 
     fn probe(&self, text: &str, from: usize, options: &ParseOptions<'_>, mode: ScanMode) -> Probe {
-        let pending = pending_opener(
-            text,
-            from,
-            &[
-                "<|tool_call",
-                "<｜tool▁call",
-                "<|tool_calls",
-                "<｜tool▁calls",
-            ],
-            ">",
-            mode,
-        );
+        let pending = pending_opener(text, from, self.openers(), ">", mode);
         prefer_pending(Self::probe_decided(text, from, options, mode), pending)
     }
 
     fn openers(&self) -> &'static [&'static str] {
+        // The bar style (`|` / `｜`) and the word separator (`_` / `▁`) vary
+        // independently — `SEP_RE`/`CALL_BEGIN_RE`/etc. accept all four
+        // combinations — so every combination needs its own literal here.
+        // Only two of the four were listed before, which let a split after
+        // e.g. `<｜tool_` (fullwidth bar, ASCII underscore) leak: neither
+        // literal is a substring of it, so `hold_from` released it as plain
+        // text and the completed marker was never recognized.
         &[
             "<|tool_call",
+            "<|tool▁call",
+            "<｜tool_call",
             "<｜tool▁call",
             "<|tool_calls",
+            "<|tool▁calls",
+            "<｜tool_calls",
             "<｜tool▁calls",
         ]
     }

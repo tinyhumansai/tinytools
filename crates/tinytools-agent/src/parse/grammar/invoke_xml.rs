@@ -49,6 +49,20 @@ static WRAPPER_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     .ok()
 });
 
+/// The start of an `<invoke`/`<function` opener, with or without a namespace
+/// or DSML prefix, that does not itself require the tag's `>` to match.
+///
+/// [`OPEN_RE`] only matches a *complete* opening tag, so a fragment boundary
+/// that falls before the `>` — `<atem:invoke name="read"` with nothing
+/// after it yet — makes it match nothing at all. The unprefixed and DSML
+/// spellings are covered by the fixed literal list `probe` also holds on
+/// (`"<invoke "`, `"<function"`, `"<|DSML"`, `"<｜DSML"`), but an XML
+/// namespace prefix is open-ended and cannot be enumerated the same way;
+/// this regex recognizes the tag structurally instead, so a stream split
+/// mid-namespace still holds the fragment back.
+static OPEN_START_RE: LazyLock<Option<Regex>> =
+    LazyLock::new(|| Regex::new(&format!(r"(?is)<{PREFIX}(?:invoke|function)\b")).ok());
+
 /// A closing tag ending an invoke: its own, `</function>`, or a stray
 /// `</tool_call>` some templates substitute.
 static CLOSE_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
@@ -76,13 +90,19 @@ impl Grammar for InvokeXml {
     }
 
     fn probe(&self, text: &str, from: usize, _options: &ParseOptions<'_>, mode: ScanMode) -> Probe {
-        let pending = pending_opener(
+        let literal_pending = pending_opener(
             text,
             from,
             &["<invoke ", "<function", "<|DSML", "<｜DSML"],
             ">",
             mode,
         );
+        let namespaced_pending =
+            (mode == ScanMode::Stream).then(|| Self::pending_namespaced_open(text, from));
+        let pending = [literal_pending, namespaced_pending.flatten()]
+            .into_iter()
+            .flatten()
+            .min();
         prefer_pending(Self::probe_decided(text, from, mode), pending)
     }
 
@@ -103,6 +123,18 @@ impl Grammar for InvokeXml {
 }
 
 impl InvokeXml {
+    /// The start of a namespaced `<ns:invoke …` (or `<ns:function …`) opener
+    /// whose `>` has not arrived yet, if any.
+    fn pending_namespaced_open(text: &str, from: usize) -> Option<usize> {
+        let re = OPEN_START_RE.as_ref()?;
+        let hay = &text[from..];
+        let m = re.find(hay)?;
+        if hay[m.end()..].contains('>') {
+            return None;
+        }
+        Some(from + m.start())
+    }
+
     /// The next block whose opener is fully present.
     fn probe_decided(text: &str, from: usize, mode: ScanMode) -> Probe {
         let (Some(open_re), Some(wrapper_re), Some(close_re)) =

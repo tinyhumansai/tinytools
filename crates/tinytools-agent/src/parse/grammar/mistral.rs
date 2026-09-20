@@ -50,9 +50,16 @@ impl Grammar for Mistral {
         // v11+: `NAME[ARGS]{…}`, possibly several in a row.
         let mut calls = Vec::new();
         let mut cursor = 0usize;
+        // Set when the loop stopped for a reason a stream fragment boundary
+        // can explain — a name (and possibly a partial `[ARGS]`) not yet
+        // finished, or a complete `NAME[ARGS]` whose JSON body has not fully
+        // arrived — as opposed to text that is definitively not a
+        // continuation (an invalid name).
+        let mut ambiguous_tail = false;
         loop {
             let rest = &after[cursor..];
             let Some(args_rel) = rest.find(ARGS) else {
+                ambiguous_tail = could_be_v11_continuation(rest);
                 break;
             };
             let name = rest[..args_rel].trim();
@@ -65,6 +72,10 @@ impl Grammar for Mistral {
             }
             let payload = &rest[args_rel + ARGS.len()..];
             let Some((value, consumed)) = extract_first_json_value_with_end(payload) else {
+                // A valid name and a complete `[ARGS]` marker, but the JSON
+                // body has not arrived complete yet — streaming cannot tell
+                // that apart from a fragment boundary landing mid-object.
+                ambiguous_tail = true;
                 break;
             };
             let arguments = if value.is_object() {
@@ -78,18 +89,13 @@ impl Grammar for Mistral {
         if !calls.is_empty() {
             // The v11 form allows a second call to follow directly with no
             // fresh `[TOOL_CALLS]` marker (`NAME[ARGS]{…}NAME2[ARGS]{…}`).
-            // If the buffered text ends right where the trailing bytes
-            // could still grow into another such name, a stream fragment
-            // has not necessarily finished the block — finalizing now would
-            // drop the continuation call the moment it arrives split across
-            // a fragment boundary. Hold the whole block until either more
+            // If the buffered text ends right where the trailing bytes are
+            // still ambiguous, a stream fragment has not necessarily
+            // finished the block — finalizing now would drop the
+            // continuation call the moment it arrives split across a
+            // fragment boundary. Hold the whole block until either more
             // text disambiguates it or the stream ends.
-            let could_continue = mode == ScanMode::Stream
-                && after[cursor..]
-                    .trim_start()
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.');
-            if could_continue {
+            if mode == ScanMode::Stream && ambiguous_tail {
                 return Probe::Pending { start };
             }
             return Probe::Found(Block {
@@ -114,4 +120,18 @@ impl Grammar for Mistral {
     fn openers(&self) -> &'static [&'static str] {
         &["[TOOL_CALLS]"]
     }
+}
+
+/// Whether `rest` (the text left over after the last complete v11 call, or
+/// the whole body when no call has been read yet) is still consistent with
+/// growing into another `NAME[ARGS]` pair: a run of name characters,
+/// optionally followed by a proper prefix of the `[ARGS]` marker.
+/// `NAME[ARGS]` itself never reaches this check — the caller only calls it
+/// once `rest.find(ARGS)` has already failed.
+fn could_be_v11_continuation(rest: &str) -> bool {
+    let trimmed = rest.trim_start();
+    let name_len = trimmed
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '.'))
+        .unwrap_or(trimmed.len());
+    ARGS.starts_with(&trimmed[name_len..])
 }

@@ -24,6 +24,9 @@ pub(crate) struct Harmony;
 const CHANNEL: &str = "<|channel|>";
 const MESSAGE: &str = "<|message|>";
 const TERMINATORS: &[&str] = &["<|call|>", "<|end|>", "<|return|>"];
+/// The Harmony template's per-turn preamble, always immediately before the
+/// first channel. Furniture, not narrative — see the module doc.
+const START_PREFIX: &str = "<|start|>assistant";
 
 impl Grammar for Harmony {
     fn source(&self) -> CallSource {
@@ -33,10 +36,11 @@ impl Grammar for Harmony {
     fn probe(&self, text: &str, from: usize, _options: &ParseOptions<'_>, mode: ScanMode) -> Probe {
         let mut cursor = from;
         while let Some(idx) = find_ci(text, CHANNEL, cursor) {
+            let start = absorb_start_prefix(text, idx);
             let header_start = idx + CHANNEL.len();
             let Some(message_rel) = find_ci(text, MESSAGE, header_start) else {
                 if mode == ScanMode::Stream {
-                    return Probe::Pending { start: idx };
+                    return Probe::Pending { start };
                 }
                 return Probe::None;
             };
@@ -54,18 +58,40 @@ impl Grammar for Harmony {
                 .min_by_key(|(i, _)| *i);
             let Some((payload_end, term_end)) = terminator else {
                 if mode == ScanMode::Stream {
-                    return Probe::Pending { start: idx };
+                    return Probe::Pending { start };
                 }
                 // Batch: the payload runs to the end of the text.
-                return found(idx, text.len(), &name, after);
+                return found(start, text.len(), &name, after);
             };
-            return found(idx, payload_start + term_end, &name, &after[..payload_end]);
+            return found(
+                start,
+                payload_start + term_end,
+                &name,
+                &after[..payload_end],
+            );
         }
         Probe::None
     }
 
     fn openers(&self) -> &'static [&'static str] {
         &["<|channel|>", "<|start|>"]
+    }
+}
+
+/// Extends a channel marker's position backward over an immediately
+/// preceding [`START_PREFIX`], so it is dropped along with the call instead
+/// of leaking into the narrative (or, mid-stream, being released before the
+/// scrubber knows a call follows it).
+fn absorb_start_prefix(text: &str, idx: usize) -> usize {
+    let Some(prefix_start) = idx.checked_sub(START_PREFIX.len()) else {
+        return idx;
+    };
+    if text.is_char_boundary(prefix_start)
+        && text[prefix_start..idx].eq_ignore_ascii_case(START_PREFIX)
+    {
+        prefix_start
+    } else {
+        idx
     }
 }
 

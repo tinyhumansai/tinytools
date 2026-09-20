@@ -84,7 +84,7 @@ impl ParsedToolCall {
 /// safe, because the anti-phantom rules in [`crate::parse`] do not depend on
 /// any of it. Supplying `known_tools` is what unlocks name repair and the
 /// alias-tolerant bare-object path.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct ParseOptions<'a> {
     /// The tools the model was actually offered this turn. Enables name
     /// repair (`terminal" parameter=…` → `terminal`) and lets a bare JSON
@@ -96,6 +96,16 @@ pub struct ParseOptions<'a> {
     /// read as a call. Off for callers whose model legitimately answers in
     /// JSON.
     pub allow_bare_json: bool,
+}
+
+impl Default for ParseOptions<'_> {
+    /// Matches [`Self::new`]: a derived `Default` would leave `allow_bare_json`
+    /// at `bool`'s `false`, contradicting the documented default above and
+    /// silently disabling bare-JSON parsing for any caller that writes
+    /// `ParseOptions::default()` instead of `ParseOptions::new()`.
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<'a> ParseOptions<'a> {

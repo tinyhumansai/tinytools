@@ -45,8 +45,19 @@ pub(crate) struct Tagged;
 static TAG_RE: LazyLock<Option<Regex>> =
     LazyLock::new(|| Regex::new(r"(?i)<[|/\s]*tool[_-]?call(?:[|/\s]*|\s+[^>]*)>").ok());
 
-/// Openers a fenced block can carry.
-const FENCE_OPENERS: &[&str] = &["```tool_call", "```toolcall", "```tool-call", "```invoke"];
+/// Openers a fenced block can carry. `` ```tool_calls `` (plural) is listed
+/// separately from `` ```tool_call `` rather than relying on a prefix match:
+/// `next_opener` requires the language to end exactly at the literal, so
+/// without its own entry the plural spelling — which
+/// [`crate::parse::protected::TOOL_CALL_LANGUAGES`] already classifies as a
+/// call language, not a protected example — would never be recognized here.
+const FENCE_OPENERS: &[&str] = &[
+    "```tool_call",
+    "```toolcall",
+    "```tool-call",
+    "```tool_calls",
+    "```invoke",
+];
 
 /// Kimi-family argument-quote sentinel that leaks in place of `"`.
 const ARG_QUOTE_SENTINEL: &str = "<|\"|>";
@@ -94,6 +105,7 @@ impl Grammar for Tagged {
             "```tool_call",
             "```toolcall",
             "```tool-call",
+            "```tool_calls",
             "```invoke",
         ]
     }
