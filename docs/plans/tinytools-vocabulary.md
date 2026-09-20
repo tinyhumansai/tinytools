@@ -125,7 +125,7 @@ extension specified in
 8. Update `crates/tinytools/README.md`'s "Static and per-call return-direct"
    section and field list to describe the tri-state semantics.
 
-## Task 6: Full verification
+## Task 8: Full verification
 
 All items below were run and passed locally as of this commit, and CI
 re-verifies the same commands on every push:
