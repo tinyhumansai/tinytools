@@ -85,6 +85,46 @@ sequence for the next module added to this crate.
    remaining template-only instructions (a deleted example, a nonexistent
    error-type variant) rather than leaving them to bit-rot.
 
+## Task 7: Rich `ToolResult`, replay classification, and a host escape hatch
+
+**Files:** `crates/tinytools/src/result/*`, `crates/tinytools/src/policy/*`,
+`crates/tinytools/src/context/*`, `crates/tinytools/README.md`,
+`docs/specs/tinytools-vocabulary.md`
+
+This task documents the sequence actually followed (post-hoc, added while
+addressing review feedback on the pull request that landed it), for the
+extension specified in
+[`../specs/tinytools-vocabulary.md`](../specs/tinytools-vocabulary.md#extension-rich-results-replay-classification-and-a-host-escape-hatch).
+
+1. Add `ToolContent::Image` / `ToolContent::File` and their `ImageData` /
+   `FileData` payload types, each literal-wire tested for both directions.
+2. Add `ToolResult::follow_up`, `::metadata`, `::control: Option<ToolControl>`,
+   and `::error_kind: Option<ToolErrorKind>`, each `#[serde(default)]` and, for
+   the ones that can be empty or absent, `skip_serializing_if`, so a
+   `ToolResult` persisted before these fields existed still decodes and a
+   plain result's wire shape is unchanged.
+3. Add `ToolControl` (`return_direct`, `terminate`, `goto`, `state_update`)
+   and the builders `return_direct()`, `terminate()`, `with_goto(..)`,
+   `with_state_update(..)` that lazily create it.
+4. Add `ToolReplay` and `ToolRuntime::replay`, defaulting to `Never`.
+5. Add `ToolRunContext::host_extension`, defaulting to `None`.
+6. Bump `[workspace.package].version` from `0.2.0` to `0.3.0`: the new fields
+   on public structs (`ToolResult`, `ToolRuntime`) are additive on the wire
+   but break an external struct literal that does not use `..Default::default()`
+   or `..Self::default()`, which `AGENTS.md`'s versioning policy treats as a
+   non-additive, minor-bump-worthy change pre-1.0.
+7. Fix `ToolControl::return_direct` to `Option<bool>` (review finding, both
+   CodeRabbit and Codex): a call that only used `with_goto`,
+   `with_state_update`, or `terminate` created a `ToolControl` whose
+   `return_direct` defaulted to `false`, so a harness following the
+   documented "prefer the per-call value" rule would silently suppress a
+   tool's static `true` declaration even though the call never touched
+   `return_direct`. Add `dont_return_direct()` as the explicit `Some(false)`
+   builder, and add regression tests asserting the field stays `None` when no
+   builder touches it.
+8. Update `crates/tinytools/README.md`'s "Static and per-call return-direct"
+   section and field list to describe the tri-state semantics.
+
 ## Task 6: Full verification
 
 All items below were run and passed locally as of this commit, and CI
