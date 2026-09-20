@@ -53,8 +53,17 @@ pub struct ToolResult {
     /// it reads this field directly and decides how to place it on the wire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub follow_up: Vec<ToolContent>,
-    /// Host-only metadata: never shown to the model, but available to the host
-    /// for events, persistence, or telemetry.
+    /// Host-only metadata: available to the host for events, persistence, or
+    /// telemetry, but never *included in the model-facing rendering*
+    /// ([`Self::text`], [`Self::output`], [`Self::output_for_llm`]).
+    ///
+    /// This field still round-trips through [`Serialize`]/[`Deserialize`],
+    /// the same as every other field, because that is what lets a host
+    /// persist the complete `ToolResult` to a transcript, RPC reply, or JSONL
+    /// session record. A host that builds a model-facing message must use
+    /// one of the rendering methods above (or otherwise construct the
+    /// message deliberately) rather than serializing this struct wholesale
+    /// and sending the JSON to the model, or it will leak this field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
     /// Loop-control hints a harness may honour, such as ending the loop
