@@ -62,10 +62,14 @@ sensible turn even when a renderer does not special-case the new block kinds.
   provider payloads) that is never shown to the model. Attach it with
   `with_metadata(..)`.
 - `control: Option<ToolControl>` — loop-control hints a harness may honour:
-  `return_direct`, `terminate`, `goto: Option<String>`, and
+  `return_direct: Option<bool>`, `terminate`, `goto: Option<String>`, and
   `state_update: Option<serde_json::Value>`. Set them with the builders
-  `return_direct()`, `terminate()`, `with_goto(..)`, and
-  `with_state_update(..)`, which lazily create the `ToolControl`.
+  `return_direct()`, `dont_return_direct()`, `terminate()`, `with_goto(..)`,
+  and `with_state_update(..)`, which lazily create the `ToolControl`.
+  `return_direct` is tri-state, not a defaulted `bool`: a call that only used
+  `with_goto(..)`, `with_state_update(..)`, or `terminate()` leaves it `None`
+  rather than an implicit `false`, so it cannot silently suppress a tool's
+  static `true` default — see "Static and per-call return-direct" below.
 
 `ToolResult::retry(message)` and `ToolResult::failed(message)` both set
 `is_error`, same as `error(message)`, but additionally tag
