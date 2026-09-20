@@ -314,7 +314,7 @@ fn control_round_trips_through_json() {
     let encoded = serde_json::to_string(&r).expect("serializable");
     let back: ToolResult = serde_json::from_str(&encoded).expect("deserializable");
     let control = back.control.expect("control set");
-    assert!(control.return_direct);
+    assert_eq!(control.return_direct, Some(true));
     assert!(!control.terminate);
     assert_eq!(control.goto.as_deref(), Some("n"));
 }
