@@ -86,9 +86,15 @@ still decodes, and a plain result's wire shape is unchanged.
 `Tool::return_direct()` is a static, per-tool default (`false`) for a tool
 whose entire purpose is to hand the model's answer straight back — a
 final-answer or handoff tool overrides it to `true`. `ToolResult::control`'s
-`return_direct` is the per-*call* override on `ToolControl`; a harness should
-prefer the per-call value on the result it just received over the tool's
-static declaration.
+`return_direct: Option<bool>` is the per-*call* override on `ToolControl`; a
+harness should prefer `Some(..)` on the result it just received over the
+tool's static declaration, and fall back to the static declaration when it is
+`None`. `None` is the outcome of a call that never touched `return_direct` —
+including one that only used `with_goto(..)`, `with_state_update(..)`, or
+`terminate()` — so it must not be read as an explicit override. Call
+`return_direct()` for `Some(true)`, or `dont_return_direct()` for `Some(false)`
+to force the call to *not* return directly even when the tool's static
+declaration is `true`.
 
 ## Replay after a crash
 
