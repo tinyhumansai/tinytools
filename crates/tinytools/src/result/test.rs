@@ -295,7 +295,7 @@ fn control_builders_set_the_expected_fields() {
         .with_goto("next_node")
         .with_state_update(json!({"count": 1}));
     let control = r.control.as_ref().expect("control set");
-    assert!(control.return_direct);
+    assert_eq!(control.return_direct, Some(true));
     assert!(control.terminate);
     assert_eq!(control.goto.as_deref(), Some("next_node"));
     assert_eq!(control.state_update, Some(json!({"count": 1})));
