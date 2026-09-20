@@ -149,8 +149,9 @@ this section specifies the additions below. All are additive to the wire shape
 see "Versioning" — so they shipped as a `0.2.0` → `0.3.0` minor bump.
 
 - **`ToolContent::Image` / `ToolContent::File`** extend the block-list result
-  with image and file blocks (`ImageData` / `FileData`, each `Base64`, `Url`,
-  or `Path`), alongside the existing `Text` and `Json` blocks.
+  with image and file blocks (`ImageData` supports `Base64` and `Url`, while
+  `FileData` also supports `Path`), alongside the existing `Text` and `Json`
+  blocks.
 - **`ToolResult::follow_up: Vec<ToolContent>`** carries content a caller should
   present to the model as a *separate* message after the tool result — a
   screenshot or document the next turn should read — rather than folding it
