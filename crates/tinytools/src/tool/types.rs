@@ -189,6 +189,17 @@ pub trait Tool: Send + Sync {
         ToolExposure::Direct
     }
 
+    /// The group this tool belongs to, when it has one: a toolpack, a
+    /// connector toolkit, an MCP server.
+    ///
+    /// Read by a tool-search index so a model can find "the Slack one" and so
+    /// a hit can say where it came from. Purely descriptive — a host neither
+    /// gates nor routes on it. Most tools have no family and keep the
+    /// default.
+    fn family(&self) -> Option<&str> {
+        None
+    }
+
     /// Whether two concurrent invocations are safe to run in parallel within a
     /// single model turn.
     ///

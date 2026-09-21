@@ -65,11 +65,15 @@ compiles neither the harness nor the host.
 | `context` | `ToolRunContext` — the narrow seam onto a live run |
 | `workspace` | `WorkspaceDescriptor`, `SandboxMode` — the root a tool may touch, and how strictly it is sandboxed |
 | `naming` | `humanize_tool_name`, `context_detail_from_args` — rendering a call for a human |
+| `rank` | `ToolRanker`, `RankCandidate`, `RankHit`, `Bm25Ranker` — ranking a catalogue of tools against an intent, with the lexical ranker built in |
 
 The workspace also contains `tinytools-agent`, a separate crate for
 model-facing tool-call parsing, dialects, catalogue/result rendering, and
 transcript replay. It builds on `ToolSpec` without adding agent-loop or provider
-dependencies to the base `tinytools` vocabulary crate.
+dependencies to the base `tinytools` vocabulary crate. `tinytools-jev` is a
+second sibling: a `ToolRanker` backed by TypeSafe's Jev decision model through
+`tinyjevclient`, kept out of the vocabulary crate because it carries an HTTP
+transport.
 
 ## What is deliberately not here
 
