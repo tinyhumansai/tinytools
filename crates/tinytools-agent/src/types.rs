@@ -34,6 +34,8 @@ pub enum CallSource {
     BareJson,
     /// P-Format `name[index|value]` inside a tag.
     PFormat,
+    /// A code-style call `name(arg="value")` inside a tag, registry-gated.
+    Code,
 }
 
 /// One model-requested tool invocation recovered from text or structured data.

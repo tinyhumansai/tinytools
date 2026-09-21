@@ -8,9 +8,9 @@
 //! advertises one grammar and a parser that expects another is a silent
 //! whole-turn failure with no error anywhere.
 //!
-//! Three dialects ship: [`XmlDialect`] (JSON in a tag), [`PFormatDialect`]
-//! (compact positional), and [`NativeDialect`] (the provider's structured
-//! channel).
+//! Four dialects ship: [`XmlDialect`] (JSON in a tag), [`PFormatDialect`]
+//! (compact positional), [`CodeDialect`] (a Python or TypeScript function
+//! call), and [`NativeDialect`] (the provider's structured channel).
 //!
 //! This module speaks [`TranscriptEntry`], a deliberately thin record shape a
 //! host maps onto in a few `From` impls. It does not assume a provider message
@@ -29,15 +29,19 @@
 //! never decides what is allowed to *happen*. That boundary is what keeps a
 //! host's security policy in the host, where it can be audited.
 
+mod code;
 mod native;
 mod pairing;
 mod pformat;
 mod types;
 mod xml;
 
+pub use crate::codecall::CodeStyle;
 pub use crate::render::{
-    CATALOGUE_HEADING, TOOL_RESULTS_PREFIX, render_json_catalogue, render_pformat_catalogue,
+    CATALOGUE_HEADING, TOOL_RESULTS_PREFIX, render_code_catalogue, render_json_catalogue,
+    render_pformat_catalogue,
 };
+pub use code::CodeDialect;
 pub use native::NativeDialect;
 pub use pairing::pair_tool_cycles;
 pub use pformat::PFormatDialect;

@@ -3,13 +3,14 @@
 //! One place, so the wording a model reads and the grammar the parser
 //! expects cannot drift apart. The JSON block embeds its catalogue because the
 //! schemas *are* the protocol for a model writing argument names by hand; the
-//! P-Format block does not, because its signatures live in the prompt's tool
-//! section next to the descriptions; the native block carries no catalogue at
-//! all, because the request does.
+//! P-Format and code blocks do not, because their signatures live in the
+//! prompt's tool section next to the descriptions; the native block carries no
+//! catalogue at all, because the request does.
 
 use tinytools::ToolSpec;
 
 use super::catalogue::render_json_catalogue;
+use crate::codecall::CodeStyle;
 
 /// The JSON-in-tag protocol block plus the full-schema catalogue.
 #[must_use]
@@ -77,4 +78,52 @@ pub fn native_instructions() -> String {
         "",
     ]
     .join("\n")
+}
+
+/// The code-call protocol block — protocol only, no catalogue.
+///
+/// Short on purpose: the whole point of the dialect is that a code-trained
+/// model already knows how to write a function call, so the block only has to
+/// say where to put it and what a value may be.
+#[must_use]
+pub fn code_instructions(style: CodeStyle) -> String {
+    let mut out = String::new();
+    out.push_str("## Tool Use Protocol\n\n");
+    match style {
+        CodeStyle::Python => {
+            out.push_str(
+                "Call a tool by writing a Python function call inside `<tool_call>` tags, \
+                 one call per line:\n\n",
+            );
+            out.push_str("```\n<tool_call>\nread_file(path=\"src/main.rs\", limit=20)\n</tool_call>\n```\n\n");
+            out.push_str(
+                "- Use the signatures in `## Tools`. Prefer keyword arguments; positional \
+                 arguments follow the signature order.\n\
+                 - Values are Python literals only: quoted strings, numbers, True/False/None, \
+                 lists, dicts. Omit optional arguments you do not need.\n",
+            );
+        }
+        CodeStyle::TypeScript => {
+            out.push_str(
+                "Call a tool by writing a function call inside `<tool_call>` tags, one call \
+                 per line, passing the arguments as one object:\n\n",
+            );
+            out.push_str(
+                "```\n<tool_call>\nread_file({path: \"src/main.rs\", limit: 20})\n</tool_call>\n```\n\n",
+            );
+            out.push_str(
+                "- Use the signatures in `## Tools`. Keys are the parameter names; positional \
+                 arguments in signature order also work.\n\
+                 - Values are literals only: quoted strings, numbers, true/false/null, arrays, \
+                 objects. Omit optional arguments you do not need.\n",
+            );
+        }
+    }
+    out.push_str(
+        "- Write only calls inside the tags: no prose, no code fences. For several calls, \
+         use one line each or one `<tool_call>` block each.\n\
+         - After execution, results appear in `<tool_result>` tags. Continue reasoning with \
+         the results until you can give a final answer.\n\n",
+    );
+    out
 }

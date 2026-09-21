@@ -222,3 +222,33 @@ fn known_tools_repair_streamed_names() {
     let step = s.feed("<tool_call>{\"name\":\"functions.read_file\",\"arguments\":{}}</tool_call>");
     assert_eq!(step.calls[0].name, "read_file");
 }
+
+#[test]
+fn a_code_call_split_mid_string_is_released_once_and_never_shown() {
+    let registry = crate::build_registry([(
+        "echo",
+        serde_json::json!({"type": "object", "properties": {"value": {"type": "string"}}}),
+    )]);
+    let mut s = StreamScrubber::new().with_registry(std::sync::Arc::new(registry));
+    let mut out = String::new();
+    let mut calls = Vec::new();
+    for f in [
+        "Sure. <tool_call>\necho(value=\"he",
+        "llo)\")\n</tool_",
+        "call> done",
+    ] {
+        let step = s.feed(f);
+        out.push_str(&step.text);
+        calls.extend(step.calls);
+    }
+    let step = s.flush();
+    out.push_str(&step.text);
+    calls.extend(step.calls);
+
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "echo");
+    assert_eq!(calls[0].arguments["value"], "hello)");
+    assert_eq!(calls[0].source, crate::types::CallSource::Code);
+    assert!(!out.contains("echo("), "markup leaked: {out:?}");
+    assert!(out.contains("Sure.") && out.contains("done"));
+}

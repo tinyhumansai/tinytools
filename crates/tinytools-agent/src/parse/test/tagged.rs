@@ -324,3 +324,94 @@ fn pformat_call_and_claude_invoke_both_survive() {
     assert_eq!(calls[1].name, "other");
     assert_eq!(calls[1].arguments, serde_json::json!({"x": "y"}));
 }
+
+// ── Code-call bodies ────────────────────────────────────────────────────────
+
+#[test]
+fn a_code_call_body_parses_with_its_own_source() {
+    let response = "Looking.\n<tool_call>\necho(value=\"hello\")\n</tool_call>\ndone";
+    let (narrative, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
+    assert_eq!(narrative, "Looking.\ndone");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "echo");
+    assert_eq!(calls[0].arguments, serde_json::json!({"value": "hello"}));
+    assert_eq!(calls[0].source, CallSource::Code);
+    assert!(calls[0].id.is_none(), "text calls never carry an id");
+}
+
+#[test]
+fn code_calls_need_a_registry() {
+    // Without a registry there is no layout to bind against, so the body is
+    // a recognised block with no call in it — exactly the P-Format rule.
+    let (_, calls) = parse("<tool_call>echo(value=\"hello\")</tool_call>");
+    assert!(calls.is_empty());
+}
+
+#[test]
+fn several_code_calls_in_one_tag_keep_source_order() {
+    let response = "<tool_call>\necho(\"a\")\necho(value=\"b\");\n</tool_call>";
+    let (_, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
+    let values: Vec<&str> = calls
+        .iter()
+        .map(|c| c.arguments["value"].as_str().unwrap())
+        .collect();
+    assert_eq!(values, ["a", "b"]);
+    assert!(calls.iter().all(|c| c.source == CallSource::Code));
+}
+
+#[test]
+fn a_code_call_wrapped_in_a_python_fence_inside_the_tag_is_unwrapped() {
+    let response = "<tool_call>\n```python\necho(value=\"hi\")\n```\n</tool_call>";
+    let (_, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].source, CallSource::Code);
+}
+
+#[test]
+fn a_top_level_python_fence_is_an_example_not_a_call() {
+    let response = "Like this:\n```python\necho(value=\"hi\")\n```\n";
+    let (text, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
+    assert!(calls.is_empty());
+    assert!(text.contains("echo(value=\"hi\")"));
+}
+
+#[test]
+fn a_fenced_tool_call_block_holds_a_code_call() {
+    let response = "```tool_call\necho(value=\"hi\")\n```";
+    let (_, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].source, CallSource::Code);
+}
+
+#[test]
+fn code_pformat_json_and_glm_siblings_all_survive() {
+    let response = "<tool_call>echo(value=\"c\")</tool_call>\n\
+                    <tool_call>echo[0|p]</tool_call>\n\
+                    <tool_call>{\"name\": \"shell\", \"arguments\": {\"command\": \"ls\"}}</tool_call>\n\
+                    <tool_call>shell/command>pwd</tool_call>";
+    let (_, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
+    let sources: Vec<CallSource> = calls.iter().map(|c| c.source).collect();
+    assert_eq!(
+        sources,
+        [
+            CallSource::Code,
+            CallSource::PFormat,
+            CallSource::TaggedJson,
+            CallSource::Glm
+        ]
+    );
+}
+
+#[test]
+fn a_prose_body_mentioning_a_call_is_malformed_not_a_call() {
+    let response = "<tool_call>I will call echo(value=\"hi\") now</tool_call>";
+    let (_, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
+    assert!(calls.is_empty());
+}
+
+#[test]
+fn a_code_call_to_an_unknown_tool_is_not_a_call() {
+    let response = "<tool_call>rm_rf(path=\"/\")</tool_call>";
+    let (_, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
+    assert!(calls.is_empty());
+}

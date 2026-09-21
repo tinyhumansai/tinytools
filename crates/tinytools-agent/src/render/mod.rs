@@ -21,6 +21,10 @@ pub mod instructions;
 pub mod results;
 
 pub use calls::{render_json_call, render_json_calls};
-pub use catalogue::{CATALOGUE_HEADING, render_json_catalogue, render_pformat_catalogue};
-pub use instructions::{json_instructions, native_instructions, pformat_instructions};
+pub use catalogue::{
+    CATALOGUE_HEADING, render_code_catalogue, render_json_catalogue, render_pformat_catalogue,
+};
+pub use instructions::{
+    code_instructions, json_instructions, native_instructions, pformat_instructions,
+};
 pub use results::{TOOL_RESULTS_PREFIX, format_results, to_provider_messages};

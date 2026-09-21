@@ -9,6 +9,8 @@
 //! * [`repair`] recovers damaged JSON, damaged tool names, and mis-shaped
 //!   arguments after a call has been located;
 //! * [`stream`] scrubs the same markup from a live text stream;
+//! * [`codecall`] reads code-style calls — `read_file(path="x")` — the
+//!   form a code-trained model already writes;
 //! * [`render`] produces what the model reads: the catalogue, the protocol
 //!   block, the result envelope;
 //! * [`dialect`] binds one rendering to one parser so they cannot drift.
@@ -26,6 +28,7 @@
 //! can be audited. See [`parse`] for the bounds on how forgiving the parsers
 //! are and why.
 
+pub mod codecall;
 pub mod dialect;
 pub mod parse;
 pub(crate) mod pformat;
@@ -39,6 +42,7 @@ pub mod types;
 /// a consumer that only speaks the protocol need not name `tinytools` itself.
 pub use tinytools;
 
+pub use codecall::{CodeStyle, parse_calls as parse_code_calls, render_code_signature};
 pub use parse::{
     extract_json_values, parse_arguments_value, parse_glm_style_tool_calls, parse_text,
     parse_tool_call_value, parse_tool_calls, parse_tool_calls_from_json_value,
