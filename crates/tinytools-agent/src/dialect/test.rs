@@ -835,3 +835,17 @@ fn json_call_rendering_round_trips_through_the_parser() {
     assert_eq!(calls[0].arguments["path"], "a.txt");
     assert_eq!(calls[1].arguments, serde_json::json!({}));
 }
+
+#[test]
+fn native_instructions_allow_a_lead_in_but_require_the_call_in_the_same_message() {
+    let text = crate::render::native_instructions();
+    assert!(text.contains("same message"), "{text}");
+    assert!(
+        text.contains("never end a turn on an announcement"),
+        "{text}"
+    );
+    // The old wording read as a ban on any lead-in text, which stopped models
+    // from streaming a one-line "looking that up" before their tool calls.
+    assert!(!text.contains("Let me check"), "{text}");
+    assert!(!text.contains("narrate intent"), "{text}");
+}
