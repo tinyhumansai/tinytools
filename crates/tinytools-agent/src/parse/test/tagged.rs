@@ -81,6 +81,16 @@ fn unclosed_tag_with_balanced_json_still_recovers() {
 }
 
 #[test]
+fn unclosed_tag_recovery_preserves_unrelated_markup_after_the_json() {
+    // No tag-family marker exists anywhere after this opener, so a `</div>`
+    // right after the recovered JSON is narrative, not a stray tool-call
+    // closer — it must not be swallowed as if it were one.
+    let (text, calls) = parse("<toolcall>{\"name\":\"echo\",\"arguments\":{}}</div>visible");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(text, "</div>visible");
+}
+
+#[test]
 fn unclosed_tag_without_json_is_kept_as_text() {
     let (text, calls) = parse("before <tool-call>not-json");
     assert_eq!(text, "before <tool-call>not-json");
@@ -414,4 +424,92 @@ fn a_code_call_to_an_unknown_tool_is_not_a_call() {
     let response = "<tool_call>rm_rf(path=\"/\")</tool_call>";
     let (_, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
     assert!(calls.is_empty());
+}
+
+// ── Doubled tags ────────────────────────────────────────────────────────────
+//
+// `DeepSeek` V4 under a code dialect wraps the block twice:
+// `<tool_call>\n<tool_call>\nNAME(...)\n</tool_call>\n</tool_call>`. Positional
+// pairing used to close the first tag on the empty body and drop the call,
+// and the whole thing leaked into the visible reply.
+
+#[test]
+fn a_doubled_opener_is_one_block_and_its_extra_closer_is_swallowed() {
+    let response = "I'll search.\n\n<tool_call>\n<tool_call>\necho(value=\"kashmir\")\n</tool_call>\n</tool_call>";
+    let (narrative, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert_eq!(calls[0].name, "echo");
+    assert_eq!(calls[0].arguments, serde_json::json!({"value": "kashmir"}));
+    assert_eq!(narrative, "I'll search.");
+    assert!(!narrative.contains("tool_call"), "{narrative:?}");
+}
+
+#[test]
+fn a_doubled_opener_around_a_json_body_parses_too() {
+    let (text, calls) = parse(
+        "<tool_call>\n<tool_call>\n{\"name\":\"echo\",\"arguments\":{\"value\":\"x\"}}\n</tool_call>\n</tool_call>\nafter",
+    );
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].arguments, serde_json::json!({"value": "x"}));
+    assert_eq!(text, "after");
+}
+
+#[test]
+fn two_adjacent_blocks_are_still_two_blocks() {
+    // The doubled-opener rule only fires on a whitespace-only gap; a real
+    // body between two openers is still the first block's body.
+    let text = "<tool_call>{\"name\":\"one\",\"arguments\":{}}</tool_call><tool_call>{\"name\":\"two\",\"arguments\":{}}</tool_call>";
+    let (_, calls) = parse(text);
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].name, "one");
+    assert_eq!(calls[1].name, "two");
+}
+
+#[test]
+fn a_doubled_opener_does_not_swallow_an_unrelated_closing_tag() {
+    // Only the extra `</tool_call>` a doubled opener leaves behind is
+    // protocol furniture; a real closing tag right after it (`</div>`, from
+    // whatever markup the model echoed) is narrative and must survive.
+    let (text, calls) = parse(
+        "<tool_call>\n<tool_call>\n{\"name\":\"echo\",\"arguments\":{}}\n</tool_call>\n</div>visible",
+    );
+    assert_eq!(calls.len(), 1);
+    assert_eq!(text, "</div>visible");
+}
+
+#[test]
+fn a_doubled_opener_swallows_a_pipe_form_duplicate_closer() {
+    // `TAG_RE` matches the pipe-form closer `<|/tool_call|>` too, so the
+    // doubled-opener path must recognize it as a closer to swallow, not
+    // leave it dangling as narrative text.
+    let (text, calls) = parse(
+        "<|tool_call|>\n<|tool_call|>\n{\"name\":\"echo\",\"arguments\":{}}\n<|/tool_call|>\n<|/tool_call|>\nafter",
+    );
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert_eq!(text, "after");
+}
+
+#[test]
+fn a_doubled_opener_swallows_a_newline_leaked_duplicate_closer() {
+    // `TAG_RE`'s `\s` matches any whitespace, not just space and tab, so
+    // `<\n/tool_call>` is one complete closer marker; `is_closing_marker`
+    // must classify it as such too, or the extra closer is left behind for
+    // the narrative to leak.
+    let (text, calls) = parse(
+        "<tool_call>\n<tool_call>\n{\"name\":\"echo\",\"arguments\":{}}\n</tool_call>\n<\n/tool_call>\nafter",
+    );
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert_eq!(text, "after");
+}
+
+#[test]
+fn a_bare_trailing_opener_is_dropped_not_shown() {
+    // An abandoned block at the end of a reply carries no call and no
+    // information; showing `<tool_call>` to the user is never right.
+    let (text, calls) = parse("Let me fetch a few sites directly.\n\n<tool_call>\n");
+    assert!(calls.is_empty());
+    assert_eq!(text, "Let me fetch a few sites directly.");
+    // A block with real (if unparseable) content is still kept as text.
+    let (text, _) = parse("before <tool-call>not-json");
+    assert_eq!(text, "before <tool-call>not-json");
 }

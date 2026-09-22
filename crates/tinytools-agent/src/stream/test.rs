@@ -252,3 +252,33 @@ fn a_code_call_split_mid_string_is_released_once_and_never_shown() {
     assert!(!out.contains("echo("), "markup leaked: {out:?}");
     assert!(out.contains("Sure.") && out.contains("done"));
 }
+
+#[test]
+fn a_doubled_blocks_extra_closer_split_across_fragments_never_leaks() {
+    // The doubled opener's *inner* closer can arrive in one fragment and the
+    // matching extra closer in the next. The block must stay pending across
+    // that boundary rather than finalize on the inner closer alone and let
+    // the later `</tool_call>` fall through as visible text.
+    let (out, calls) = scrub_all(&[
+        "before <tool_call>\n<tool_call>\n{\"name\":\"x\",\"arguments\":{}}\n</tool_call>\n",
+        "</tool_call> after",
+    ]);
+    assert_eq!(out, "before  after");
+    assert_eq!(calls, 1);
+    assert!(!out.contains("tool_call"), "{out:?}");
+}
+
+#[test]
+fn a_doubled_blocks_extra_closer_split_mid_marker_never_leaks() {
+    // The fragment boundary can land *inside* the extra closer itself, not
+    // just before it: `</tool_` in one fragment, `call>` in the next. That
+    // partial marker must be held rather than released as text once its
+    // first fragment is scanned.
+    let (out, calls) = scrub_all(&[
+        "before <tool_call>\n<tool_call>\n{\"name\":\"x\",\"arguments\":{}}\n</tool_call>\n</tool_",
+        "call> after",
+    ]);
+    assert_eq!(out, "before  after");
+    assert_eq!(calls, 1);
+    assert!(!out.contains("tool_"), "{out:?}");
+}
