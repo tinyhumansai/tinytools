@@ -51,8 +51,10 @@ pub(crate) struct Tagged;
 /// element) and `<tool_callable>` do not match: the name must end at a pipe,
 /// slash, whitespace, or `>`.
 static TAG_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
-    Regex::new(r"(?i)<[|\u{ff5c}/\s]*(?:DSML[|\u{ff5c}/\s]*)?tool[_-]?call(?:[|\u{ff5c}/\s]*|\s+[^>]*)>")
-        .ok()
+    Regex::new(
+        r"(?i)<[|\u{ff5c}/\s]*(?:DSML[|\u{ff5c}/\s]*)?tool[_-]?call(?:[|\u{ff5c}/\s]*|\s+[^>]*)>",
+    )
+    .ok()
 });
 
 /// Openers a fenced block can carry. `` ```tool_calls `` (plural) is listed

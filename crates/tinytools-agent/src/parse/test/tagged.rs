@@ -548,7 +548,11 @@ fn dsml_marker_variants_on_the_tag_parse() {
             open_close.0, open_close.1
         );
         let (_, calls) = crate::parse::parse_tool_calls(&raw);
-        assert_eq!(calls.len(), 1, "variant {open_close:?} must parse: {calls:?}");
+        assert_eq!(
+            calls.len(),
+            1,
+            "variant {open_close:?} must parse: {calls:?}"
+        );
         assert_eq!(calls[0].name, "echo");
     }
 }
