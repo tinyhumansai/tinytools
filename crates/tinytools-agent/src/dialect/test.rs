@@ -999,3 +999,17 @@ fn code_catalogue_is_smaller_than_the_json_catalogue() {
         "code block {code_block} vs pformat block {pformat_block}"
     );
 }
+
+#[test]
+fn native_instructions_allow_a_lead_in_but_require_the_call_in_the_same_message() {
+    let text = crate::render::native_instructions();
+    assert!(text.contains("same message"), "{text}");
+    assert!(
+        text.contains("never end a turn on an announcement"),
+        "{text}"
+    );
+    // The old wording read as a ban on any lead-in text, which stopped models
+    // from streaming a one-line "looking that up" before their tool calls.
+    assert!(!text.contains("Let me check"), "{text}");
+    assert!(!text.contains("narrate intent"), "{text}");
+}
