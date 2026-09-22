@@ -170,6 +170,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tinytools-jev"
+version = "0.3.0"
+dependencies = [
+ "async-trait",
+ "tinytools",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "tokio"
 version = "1.53.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

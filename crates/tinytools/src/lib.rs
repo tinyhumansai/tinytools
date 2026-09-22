@@ -32,6 +32,8 @@
 //! - [`context`] — [`ToolRunContext`], the narrow seam onto a live run.
 //! - [`workspace`] — [`WorkspaceDescriptor`], the root a tool may touch.
 //! - [`naming`] — rendering a call for a human.
+//! - [`rank`] — [`ToolRanker`], ranking a catalogue of tools against an
+//!   intent, and the lexical [`Bm25Ranker`] every host gets for free.
 //!
 //! # What is deliberately not here
 //!
@@ -104,6 +106,7 @@ pub mod context;
 pub mod naming;
 pub mod permission;
 pub mod policy;
+pub mod rank;
 pub mod result;
 pub mod spec;
 pub mod tool;
@@ -123,6 +126,9 @@ pub use naming::{
 pub use permission::PermissionLevel;
 pub use policy::{
     ToolAccess, ToolDisplay, ToolPolicy, ToolReplay, ToolRuntime, ToolSideEffects, WorkspaceAccess,
+};
+pub use rank::{
+    Bm25Index, Bm25Ranker, RankCandidate, RankContext, RankError, RankHit, ToolRanker, tokenize,
 };
 pub use result::{FileData, ImageData, ToolContent, ToolControl, ToolErrorKind, ToolResult};
 pub use spec::ToolSpec;

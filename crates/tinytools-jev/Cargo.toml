@@ -1,0 +1,26 @@
+[package]
+publish = false
+name = "tinytools-jev"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A tinytools ToolRanker backed by TypeSafe's Jev decision model: retrieve a shortlist lexically, let Jev decide."
+documentation = "https://docs.rs/tinytools-jev"
+readme = "README.md"
+
+[dependencies]
+async-trait = { workspace = true }
+tinytools = { path = "../tinytools", version = "0.3.0" }
+tracing = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[features]
+default = []
+tracing = ["dep:tracing"]
+
+[lints]
+workspace = true

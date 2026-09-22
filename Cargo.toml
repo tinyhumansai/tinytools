@@ -38,8 +38,8 @@ tracing = { version = "0.1", default-features = false }
 # `Tool::execute` returns `anyhow::Result` because a tool body calls arbitrary
 # host code and has no useful closed error set of its own.
 anyhow = "1"
-# Unit tests for the async trait defaults drive a real executor.
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# Unit tests for async traits drive a real executor.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 
 # Lints apply to every member that opts in with `[lints] workspace = true`, and
 # to every target of that member. CI runs clippy with `-D warnings`, so anything
