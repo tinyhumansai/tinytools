@@ -18,7 +18,8 @@ and the unknown-tool policy remain the consuming harness's or host's.
 | `repair` | `json::recover_object` (relaxed / damaged JSON), `name::resolve` (damaged tool names against the offered set), `args` (aliases, envelopes, schema-guided coercion) |
 | `stream` | `StreamScrubber`: the same grammars applied to a live text stream, releasing safe text and completed calls as they arrive |
 | `render` | the catalogue, the protocol block for each dialect, the `<tool_result>` envelope and transcript replay |
-| `dialect` | `ToolDialect` binding one rendering to one parser: `XmlDialect`, `PFormatDialect`, `NativeDialect` |
+| `codecall` | `parse_calls(body, &registry)`: Python / TypeScript function calls, and `render_code_signature` for the catalogue |
+| `dialect` | `ToolDialect` binding one rendering to one parser: `XmlDialect`, `PFormatDialect`, `CodeDialect`, `NativeDialect` |
 | `types` | `ParsedToolCall`, `CallSource`, `ParseOptions`, `ParseOutcome`, `ParseDiagnostic` |
 
 ## Grammars
@@ -33,6 +34,7 @@ and the unknown-tool policy remain the consuming harness's or host's.
 | `Glm` | `tool/param>value` lines | GLM |
 | `BareJson` | the whole response is one object / `tool_calls` envelope | Minimax gateways, `llama3.2:3b` under `tool_choice: required` |
 | `PFormat` | `name[0\|value]` inside a tag, registry-gated | any prompted model |
+| `Code` | `name(arg="value")` / `name({arg: "value"})` inside a tag, registry-gated; literals only, all-or-nothing per body | any code-trained model |
 
 Adding a grammar is one file under `src/parse/grammar/` and one entry in
 `GRAMMARS`; batch parsing, streaming, and every dialect pick it up.

@@ -286,10 +286,20 @@ pub(crate) fn decode_body(body: &str, options: &ParseOptions<'_>) -> Vec<ParsedT
     let body = strip_call_prefix(body);
     let is_known = |name: &str| options.knows(name);
 
-    if let Some(registry) = options.registry
-        && let Some((name, arguments)) = crate::pformat::parse_call(body, registry)
-    {
-        return vec![ParsedToolCall::new(name, arguments, CallSource::PFormat)];
+    if let Some(registry) = options.registry {
+        if let Some((name, arguments)) = crate::pformat::parse_call(body, registry) {
+            return vec![ParsedToolCall::new(name, arguments, CallSource::PFormat)];
+        }
+        // Code-style calls, after P-Format and before the JSON paths. A
+        // ```python fence *inside* the tag is unwrapped, the same courtesy the
+        // JSON body gets below; a fence at top level never reaches here.
+        let calls = crate::codecall::parse_calls(strip_code_fence(body), registry);
+        if !calls.is_empty() {
+            return calls
+                .into_iter()
+                .map(|(name, arguments)| ParsedToolCall::new(name, arguments, CallSource::Code))
+                .collect();
+        }
     }
 
     if let Some(recovered) = recover_sentinel_body(body)
