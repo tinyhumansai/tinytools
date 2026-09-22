@@ -29,7 +29,7 @@ use regex::Regex;
 use super::{Block, Decoded, Grammar, Probe, ScanMode, find_ci, pending_opener, prefer_pending};
 use crate::parse::call_object::{AliasPolicy, read_calls};
 use crate::parse::json_values::{
-    extract_first_json_value_with_end, extract_json_values, find_json_end, strip_leading_close_tags,
+    extract_first_json_value_with_end, extract_json_values, find_json_end,
 };
 use crate::repair::json::{recover_object, strip_code_fence};
 use crate::types::{CallSource, ParseOptions, ParsedToolCall};
@@ -224,9 +224,12 @@ impl Tagged {
                 CallSource::TaggedJson,
             );
             if !calls.is_empty() {
-                let rest = &after[consumed..];
-                let stripped = strip_leading_close_tags(rest);
-                let end = text.len() - stripped.len();
+                // No tag-family marker exists anywhere after this opener (the
+                // TAG_RE scan above found none), so nothing here is protocol
+                // furniture to clean up — stopping at the JSON boundary
+                // leaves any trailing markup, tool-call-related or not, in
+                // the narrative rather than guessing which closer it was.
+                let end = body_start + consumed;
                 return Probe::Found(Block {
                     start: opener.start,
                     end,

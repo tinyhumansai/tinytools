@@ -1,9 +1,7 @@
 //! The scan engine: protected fences, name resolution, helpers, diagnostics.
 
 use super::{parse, parse_known};
-use crate::parse::json_values::{
-    extract_first_json_value_with_end, find_json_end, strip_leading_close_tags,
-};
+use crate::parse::json_values::{extract_first_json_value_with_end, find_json_end};
 use crate::parse::protected::fence_ranges;
 use crate::parse::{
     extract_json_values, parse_arguments_value, parse_tool_call_value,
@@ -191,13 +189,6 @@ fn json_scanners_cover_common_edge_cases() {
     assert_eq!(extracted.0, serde_json::json!({ "ok": true }));
     assert!(extracted.1 > 0);
     assert!(extract_first_json_value_with_end("no json here").is_none());
-
-    assert_eq!(
-        strip_leading_close_tags(" </tool_call>  </invoke> hi "),
-        "hi "
-    );
-    assert_eq!(strip_leading_close_tags("plain"), "plain");
-    assert_eq!(strip_leading_close_tags(" </broken"), "");
 
     let values = extract_json_values("before {\"a\":1} [1,2] after");
     assert_eq!(

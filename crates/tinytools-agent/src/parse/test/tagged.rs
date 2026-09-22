@@ -81,6 +81,16 @@ fn unclosed_tag_with_balanced_json_still_recovers() {
 }
 
 #[test]
+fn unclosed_tag_recovery_preserves_unrelated_markup_after_the_json() {
+    // No tag-family marker exists anywhere after this opener, so a `</div>`
+    // right after the recovered JSON is narrative, not a stray tool-call
+    // closer — it must not be swallowed as if it were one.
+    let (text, calls) = parse("<toolcall>{\"name\":\"echo\",\"arguments\":{}}</div>visible");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(text, "</div>visible");
+}
+
+#[test]
 fn unclosed_tag_without_json_is_kept_as_text() {
     let (text, calls) = parse("before <tool-call>not-json");
     assert_eq!(text, "before <tool-call>not-json");
@@ -471,8 +481,7 @@ fn a_doubled_opener_does_not_swallow_an_unrelated_closing_tag() {
 fn a_doubled_opener_swallows_a_pipe_form_duplicate_closer() {
     // `TAG_RE` matches the pipe-form closer `<|/tool_call|>` too, so the
     // doubled-opener path must recognize it as a closer to swallow, not
-    // leave it dangling in `rest` for `strip_leading_close_tags` (which only
-    // understands `</...>`) to miss.
+    // leave it dangling as narrative text.
     let (text, calls) = parse(
         "<|tool_call|>\n<|tool_call|>\n{\"name\":\"echo\",\"arguments\":{}}\n<|/tool_call|>\n<|/tool_call|>\nafter",
     );
