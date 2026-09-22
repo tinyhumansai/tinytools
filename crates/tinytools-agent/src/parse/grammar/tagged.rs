@@ -182,6 +182,18 @@ impl Tagged {
             };
         }
 
+        // Batch: an opener with nothing after it is a call the model started
+        // and never wrote (a truncated or abandoned block). There is nothing
+        // to recover and nothing worth showing, so it is dropped rather than
+        // left in the visible text as a bare `<tool_call>`.
+        if opener.kind == OpenerKind::Tag && after.trim().is_empty() {
+            return Probe::Found(Block {
+                start: opener.start,
+                end: text.len(),
+                decoded: Decoded::Malformed { body_chars: 0 },
+            });
+        }
+
         // Batch: no closer. Recover a balanced JSON body if one starts here.
         let recovered = find_json_end(after)
             .and_then(|json_end| {

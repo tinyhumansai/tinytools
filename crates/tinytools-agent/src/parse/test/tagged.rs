@@ -454,3 +454,15 @@ fn two_adjacent_blocks_are_still_two_blocks() {
     assert_eq!(calls[0].name, "one");
     assert_eq!(calls[1].name, "two");
 }
+
+#[test]
+fn a_bare_trailing_opener_is_dropped_not_shown() {
+    // An abandoned block at the end of a reply carries no call and no
+    // information; showing `<tool_call>` to the user is never right.
+    let (text, calls) = parse("Let me fetch a few sites directly.\n\n<tool_call>\n");
+    assert!(calls.is_empty());
+    assert_eq!(text, "Let me fetch a few sites directly.");
+    // A block with real (if unparseable) content is still kept as text.
+    let (text, _) = parse("before <tool-call>not-json");
+    assert_eq!(text, "before <tool-call>not-json");
+}
