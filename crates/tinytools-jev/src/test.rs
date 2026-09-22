@@ -158,7 +158,7 @@ async fn retrieves_large_catalogues_and_handles_a_retrieval_miss() {
         .unwrap_or_default();
     assert_eq!(result.first().map(|hit| hit.key.as_str()), Some("slack"));
 
-    let (miss_ranker, evaluator) =
+    let (_unused_ranker, evaluator) =
         ranker([("slack", 0.8), ("gmail", 0.1), ("none", 0.1)], Some(0.9));
     let miss_ranker = JevRanker::new(
         evaluator.clone(),
