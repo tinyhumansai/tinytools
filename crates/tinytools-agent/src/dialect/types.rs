@@ -295,4 +295,9 @@ pub enum ToolCallFormat {
     Json,
     /// The provider supplies structured calls; the catalogue is informational.
     Native,
+    /// A Python function call inside a tag, with `def` signatures in the prompt.
+    Python,
+    /// A TypeScript function call inside a tag, with `function` signatures in
+    /// the prompt.
+    TypeScript,
 }

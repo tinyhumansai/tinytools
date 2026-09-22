@@ -415,7 +415,7 @@ fn split_pipes(input: &str) -> Vec<String> {
 /// Coerce a raw string argument into the JSON type the schema expects.
 /// Falls back to `Value::String` for any failed coercion so the model
 /// still gets a usable value into the tool argument map.
-fn coerce_value(raw: &str, ty: PFormatParamType) -> Value {
+pub(crate) fn coerce_value(raw: &str, ty: PFormatParamType) -> Value {
     match ty {
         PFormatParamType::Integer => raw.trim().parse::<i64>().map_or_else(
             |_| Value::String(raw.to_string()),

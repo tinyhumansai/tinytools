@@ -3,7 +3,9 @@
 use serde_json::{Value, json};
 
 use super::*;
+use crate::types::CallSource;
 use crate::{PFormatRegistry, build_registry};
+use std::sync::Arc;
 use tinytools::ToolSpec;
 
 /// The single transcript record a round of results almost always produces.
@@ -834,6 +836,168 @@ fn json_call_rendering_round_trips_through_the_parser() {
     assert_eq!(calls[0].name, "read_file");
     assert_eq!(calls[0].arguments["path"], "a.txt");
     assert_eq!(calls[1].arguments, serde_json::json!({}));
+}
+
+// ── Code dialect ────────────────────────────────────────────────────────────
+
+fn code_registry() -> PFormatRegistry {
+    build_registry([("get_weather", weather_schema().parameters)])
+}
+
+#[test]
+fn code_dialect_parses_a_python_call() {
+    let dialect = CodeDialect::new(CodeStyle::Python, code_registry());
+    let (text, calls) = dialect.parse_response(&response(
+        "Checking.\n<tool_call>\nget_weather(location=\"London\", unit=\"metric\")\n</tool_call>",
+    ));
+    assert_eq!(text, "Checking.");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "get_weather");
+    assert_eq!(calls[0].arguments["location"], "London");
+    assert_eq!(calls[0].arguments["unit"], "metric");
+    assert_eq!(calls[0].source, CallSource::Code);
+}
+
+#[test]
+fn code_dialect_parses_a_typescript_object_call() {
+    let dialect = CodeDialect::new(CodeStyle::TypeScript, code_registry());
+    let (_text, calls) = dialect.parse_response(&response(
+        "<tool_call>get_weather({location: \"London\", unit: \"metric\"})</tool_call>",
+    ));
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].arguments["location"], "London");
+    assert_eq!(calls[0].arguments["unit"], "metric");
+}
+
+#[test]
+fn code_dialect_falls_back_to_json_and_pformat_per_tag() {
+    let dialect = CodeDialect::new(CodeStyle::Python, code_registry());
+    let (_text, calls) = dialect.parse_response(&response(
+        "<tool_call>get_weather(\"London\")</tool_call>\n\
+         <tool_call>get_weather[0|Paris]</tool_call>\n\
+         <tool_call>{\"name\": \"other_tool\", \"arguments\": {\"x\": 1}}</tool_call>",
+    ));
+    let sources: Vec<CallSource> = calls.iter().map(|c| c.source).collect();
+    assert_eq!(
+        sources,
+        [
+            CallSource::Code,
+            CallSource::PFormat,
+            CallSource::TaggedJson
+        ]
+    );
+}
+
+#[test]
+fn code_dialect_leaves_the_catalogue_to_the_prompt() {
+    let dialect = CodeDialect::new(CodeStyle::Python, PFormatRegistry::new());
+    let instructions = dialect.prompt_instructions(&[weather_schema()]);
+    assert!(instructions.starts_with("## Tool Use Protocol"));
+    assert!(instructions.contains("read_file(path=\"src/main.rs\", limit=20)"));
+    assert!(!instructions.contains("Look up the weather"));
+    assert!(!instructions.contains("get_weather"));
+    assert!(!dialect.embeds_tool_catalogue());
+    assert!(!dialect.should_send_tool_specs());
+    assert_eq!(dialect.style(), CodeStyle::Python);
+    assert!(dialect.registry().is_empty());
+
+    let ts = CodeDialect::from_shared(CodeStyle::TypeScript, Arc::new(PFormatRegistry::new()));
+    assert!(
+        ts.prompt_instructions(&[])
+            .contains("read_file({path: \"src/main.rs\", limit: 20})")
+    );
+    assert_eq!(ts.tool_call_format(), ToolCallFormat::TypeScript);
+    assert_eq!(dialect.tool_call_format(), ToolCallFormat::Python);
+}
+
+#[test]
+fn code_dialect_delegates_results_and_replay_to_the_text_renderer() {
+    let dialect = CodeDialect::new(CodeStyle::Python, PFormatRegistry::new());
+    let pformat = PFormatDialect::new(PFormatRegistry::new());
+    let outcomes = [ToolOutcome::ok("get_weather", "sunny")];
+    assert_eq!(
+        dialect.format_results(&outcomes),
+        pformat.format_results(&outcomes)
+    );
+    let history = vec![TranscriptEntry::Chat(DialectMessage::user("hi"))];
+    assert_eq!(
+        dialect.to_provider_messages(&history),
+        pformat.to_provider_messages(&history)
+    );
+}
+
+#[test]
+fn code_catalogue_is_one_signature_per_line_in_binding_order() {
+    let tools = [
+        weather_schema(),
+        schema(
+            "shell",
+            "Run a shell command.\nMulti-line description.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string"},
+                    "background": {"type": "boolean"},
+                    "timeout": {"type": "number"}
+                },
+                "required": ["command"]
+            }),
+        ),
+        schema("list_dir", "", json!({"type": "object", "properties": {}})),
+    ];
+
+    let python = render_code_catalogue(&tools, CodeStyle::Python);
+    assert_eq!(
+        python,
+        "## Tools\n\n\
+         def get_weather(location: str = None, unit: str = None) -> str  # Look up the weather\n\
+         def shell(command: str, background: bool = None, timeout: float = None) -> str  # Run a shell command. Multi-line description.\n\
+         def list_dir() -> str\n"
+    );
+
+    let typescript = render_code_catalogue(&tools, CodeStyle::TypeScript);
+    assert_eq!(
+        typescript,
+        "## Tools\n\n\
+         function get_weather(location?: string, unit?: string): string;  // Look up the weather\n\
+         function shell(command: string, background?: boolean, timeout?: number): string;  // Run a shell command. Multi-line description.\n\
+         function list_dir(): string;\n"
+    );
+
+    // The catalogue order is the order the parser binds, not a coincidence.
+    let dialect = CodeDialect::new(
+        CodeStyle::Python,
+        build_registry(tools.iter().map(|t| (t.name.clone(), t.parameters.clone()))),
+    );
+    let (_text, calls) =
+        dialect.parse_response(&response("<tool_call>shell(\"ls\", True, 2)</tool_call>"));
+    assert_eq!(
+        calls[0].arguments,
+        json!({"command": "ls", "background": true, "timeout": 2})
+    );
+}
+
+#[test]
+fn code_catalogue_is_smaller_than_the_json_catalogue() {
+    let tools = [weather_schema()];
+    let json_len = render_json_catalogue(&tools).len();
+    let python_len = render_code_catalogue(&tools, CodeStyle::Python).len();
+    let typescript_len = render_code_catalogue(&tools, CodeStyle::TypeScript).len();
+    assert!(
+        python_len < json_len,
+        "python {python_len} vs json {json_len}"
+    );
+    assert!(
+        typescript_len < json_len,
+        "typescript {typescript_len} vs json {json_len}"
+    );
+    // The protocol block is where most of the per-turn saving lives.
+    let code_block = CodeDialect::instructions(CodeStyle::Python).len();
+    let pformat_block = PFormatDialect::instructions().len();
+    assert!(
+        code_block < pformat_block / 2,
+        "code block {code_block} vs pformat block {pformat_block}"
+    );
 }
 
 #[test]
