@@ -415,3 +415,42 @@ fn a_code_call_to_an_unknown_tool_is_not_a_call() {
     let (_, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
     assert!(calls.is_empty());
 }
+
+// ── Doubled tags ────────────────────────────────────────────────────────────
+//
+// `DeepSeek` V4 under a code dialect wraps the block twice:
+// `<tool_call>\n<tool_call>\nNAME(...)\n</tool_call>\n</tool_call>`. Positional
+// pairing used to close the first tag on the empty body and drop the call,
+// and the whole thing leaked into the visible reply.
+
+#[test]
+fn a_doubled_opener_is_one_block_and_its_extra_closer_is_swallowed() {
+    let response = "I'll search.\n\n<tool_call>\n<tool_call>\necho(value=\"kashmir\")\n</tool_call>\n</tool_call>";
+    let (narrative, calls) = parse_tool_calls_with_pformat(response, &echo_registry());
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert_eq!(calls[0].name, "echo");
+    assert_eq!(calls[0].arguments, serde_json::json!({"value": "kashmir"}));
+    assert_eq!(narrative, "I'll search.");
+    assert!(!narrative.contains("tool_call"), "{narrative:?}");
+}
+
+#[test]
+fn a_doubled_opener_around_a_json_body_parses_too() {
+    let (text, calls) = parse(
+        "<tool_call>\n<tool_call>\n{\"name\":\"echo\",\"arguments\":{\"value\":\"x\"}}\n</tool_call>\n</tool_call>\nafter",
+    );
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].arguments, serde_json::json!({"value": "x"}));
+    assert_eq!(text, "after");
+}
+
+#[test]
+fn two_adjacent_blocks_are_still_two_blocks() {
+    // The doubled-opener rule only fires on a whitespace-only gap; a real
+    // body between two openers is still the first block's body.
+    let text = "<tool_call>{\"name\":\"one\",\"arguments\":{}}</tool_call><tool_call>{\"name\":\"two\",\"arguments\":{}}</tool_call>";
+    let (_, calls) = parse(text);
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].name, "one");
+    assert_eq!(calls[1].name, "two");
+}

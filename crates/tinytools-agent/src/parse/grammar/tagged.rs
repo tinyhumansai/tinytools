@@ -117,20 +117,50 @@ impl Tagged {
         let Some(opener) = next_opener(text, from) else {
             return Probe::None;
         };
-        let after = &text[opener.body_start..];
+        let mut body_start = opener.body_start;
 
         let close = match opener.kind {
-            OpenerKind::Tag => TAG_RE
-                .as_ref()
-                .and_then(|re| re.find(after))
-                .map(|m| (m.start(), m.end())),
-            OpenerKind::Invoke => after.find("</invoke>").map(|i| (i, i + "</invoke>".len())),
-            OpenerKind::Fence => fence_close(after),
+            OpenerKind::Tag => {
+                // Positional pairing means a doubled opener —
+                // `<tool_call>\n<tool_call>\nNAME(...)\n</tool_call>\n</tool_call>`,
+                // which `DeepSeek` V4 emits under a code dialect — would
+                // otherwise close the first tag on an empty body and lose the
+                // call. An opener followed by nothing but whitespace is the
+                // same block starting again, so the scan moves past it; the
+                // matching extra closer is consumed below.
+                let re = TAG_RE.as_ref();
+                loop {
+                    let after = &text[body_start..];
+                    let Some(m) = re.and_then(|re| re.find(after)) else {
+                        break None;
+                    };
+                    let is_opener = !is_closing_marker(m.as_str());
+                    if is_opener && after[..m.start()].trim().is_empty() {
+                        body_start += m.end();
+                        continue;
+                    }
+                    break Some((m.start(), m.end()));
+                }
+            }
+            OpenerKind::Invoke => {
+                let after = &text[body_start..];
+                after.find("</invoke>").map(|i| (i, i + "</invoke>".len()))
+            }
+            OpenerKind::Fence => fence_close(&text[body_start..]),
         };
+        let after = &text[body_start..];
 
         if let Some((body_end, close_end)) = close {
             let body = &after[..body_end];
-            let end = opener.body_start + close_end;
+            let rest = &after[close_end..];
+            // Swallow the closers a doubled opener left behind, so no stray
+            // `</tool_call>` survives into the visible text. Only then: a
+            // block followed by prose keeps its exact end, whitespace included.
+            let end = if opener.kind == OpenerKind::Tag && rest.trim_start().starts_with("</") {
+                text.len() - strip_leading_close_tags(rest).len()
+            } else {
+                body_start + close_end
+            };
             let calls = decode_body(body, options);
             let decoded = if calls.is_empty() {
                 Decoded::Malformed {
@@ -186,6 +216,13 @@ impl Tagged {
     }
 }
 
+/// Whether a tag-family marker is a closer (`</tool_call>`, `<|/tool_call|>`).
+fn is_closing_marker(marker: &str) -> bool {
+    marker[1..]
+        .trim_start_matches(['|', ' ', '\t'])
+        .starts_with('/')
+}
+
 /// The earliest opener at or after `from`: a non-closing tag-family marker,
 /// the bare `<invoke>` literal, or a fence opener.
 fn next_opener(text: &str, from: usize) -> Option<Opener> {
@@ -199,8 +236,7 @@ fn next_opener(text: &str, from: usize) -> Option<Opener> {
     if let Some(re) = TAG_RE.as_ref() {
         for m in re.find_iter(&text[from..]) {
             // A marker with a slash is a closer, never an opener.
-            let inner = &m.as_str()[1..];
-            if inner.trim_start_matches(['|', ' ', '\t']).starts_with('/') {
+            if is_closing_marker(m.as_str()) {
                 continue;
             }
             consider(
