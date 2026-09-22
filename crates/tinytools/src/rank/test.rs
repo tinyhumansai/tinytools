@@ -112,4 +112,12 @@ fn rank_error_displays_without_credentials() {
     };
     assert_eq!(err.to_string(), "ranker backend failed: status 401");
     assert_eq!(RankError::Timeout.to_string(), "ranker timed out");
+    assert_eq!(
+        RankError::backend("offline").to_string(),
+        "ranker backend failed: offline"
+    );
+    assert_eq!(
+        RankError::invalid_input("bad key").to_string(),
+        "invalid ranking input: bad key"
+    );
 }
