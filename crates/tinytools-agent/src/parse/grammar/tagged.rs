@@ -119,15 +119,18 @@ impl Tagged {
         };
         let mut body_start = opener.body_start;
 
+        // How many extra openers a doubled block skipped, so the matching
+        // number of extra closers — never an unrelated closing tag such as
+        // `</div>` — can be swallowed below. `DeepSeek` V4 doubles both the
+        // opener and the closer under a code dialect:
+        // `<tool_call>\n<tool_call>\nNAME(...)\n</tool_call>\n</tool_call>`.
+        let mut skipped = 0usize;
         let close = match opener.kind {
             OpenerKind::Tag => {
-                // Positional pairing means a doubled opener —
-                // `<tool_call>\n<tool_call>\nNAME(...)\n</tool_call>\n</tool_call>`,
-                // which `DeepSeek` V4 emits under a code dialect — would
-                // otherwise close the first tag on an empty body and lose the
-                // call. An opener followed by nothing but whitespace is the
-                // same block starting again, so the scan moves past it; the
-                // matching extra closer is consumed below.
+                // Positional pairing means a doubled opener would otherwise
+                // close the first tag on an empty body and lose the call. An
+                // opener followed by nothing but whitespace is the same
+                // block starting again, so the scan moves past it.
                 let re = TAG_RE.as_ref();
                 loop {
                     let after = &text[body_start..];
@@ -137,6 +140,7 @@ impl Tagged {
                     let is_opener = !is_closing_marker(m.as_str());
                     if is_opener && after[..m.start()].trim().is_empty() {
                         body_start += m.end();
+                        skipped += 1;
                         continue;
                     }
                     break Some((m.start(), m.end()));
@@ -153,11 +157,21 @@ impl Tagged {
         if let Some((body_end, close_end)) = close {
             let body = &after[..body_end];
             let rest = &after[close_end..];
-            // Swallow the closers a doubled opener left behind, so no stray
-            // `</tool_call>` survives into the visible text. Only then: a
-            // block followed by prose keeps its exact end, whitespace included.
-            let end = if opener.kind == OpenerKind::Tag && rest.trim_start().starts_with("</") {
-                text.len() - strip_leading_close_tags(rest).len()
+            // Swallow only the closers a doubled opener left behind — never
+            // an unrelated closing tag such as `</div>` — so no stray
+            // `</tool_call>` survives into the visible text while narrative
+            // markup after a normal call is left untouched.
+            let end = if opener.kind == OpenerKind::Tag && skipped > 0 {
+                match swallow_extra_closers(rest, skipped, mode) {
+                    Some(consumed) => body_start + close_end + consumed,
+                    // Streaming: more input could still bring the matching
+                    // closer, so the block is not safe to finalize yet.
+                    None => {
+                        return Probe::Pending {
+                            start: opener.start,
+                        };
+                    }
+                }
             } else {
                 body_start + close_end
             };
@@ -233,6 +247,43 @@ fn is_closing_marker(marker: &str) -> bool {
     marker[1..]
         .trim_start_matches(['|', ' ', '\t'])
         .starts_with('/')
+}
+
+/// Swallows up to `max` tag-family closers from the front of `rest`
+/// (whitespace between them ignored), returning the byte count consumed.
+/// Only a recognized closer — matched by [`TAG_RE`], the same grammar as
+/// every opener — is ever eaten, so unrelated markup such as `</div>` is
+/// left for the narrative. In [`ScanMode::Stream`], `None` means the text
+/// ends before it is clear whether another closer is still coming, so the
+/// caller must hold the block back rather than finalize it early.
+fn swallow_extra_closers(rest: &str, max: usize, mode: ScanMode) -> Option<usize> {
+    let re = TAG_RE.as_ref()?;
+    let mut consumed = 0usize;
+    for _ in 0..max {
+        let after = &rest[consumed..];
+        let trimmed = after.trim_start();
+        let skipped_ws = after.len() - trimmed.len();
+        if trimmed.is_empty() {
+            // Nothing here yet: in batch mode that is simply the end of the
+            // response, in stream mode a closer could still be on its way.
+            return if mode == ScanMode::Stream {
+                None
+            } else {
+                Some(consumed)
+            };
+        }
+        let Some(m) = re.find(trimmed) else {
+            return Some(consumed);
+        };
+        if m.start() != 0 {
+            return Some(consumed);
+        }
+        if !is_closing_marker(m.as_str()) {
+            return Some(consumed);
+        }
+        consumed += skipped_ws + m.end();
+    }
+    Some(consumed)
 }
 
 /// The earliest opener at or after `from`: a non-closing tag-family marker,

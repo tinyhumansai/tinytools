@@ -456,6 +456,31 @@ fn two_adjacent_blocks_are_still_two_blocks() {
 }
 
 #[test]
+fn a_doubled_opener_does_not_swallow_an_unrelated_closing_tag() {
+    // Only the extra `</tool_call>` a doubled opener leaves behind is
+    // protocol furniture; a real closing tag right after it (`</div>`, from
+    // whatever markup the model echoed) is narrative and must survive.
+    let (text, calls) = parse(
+        "<tool_call>\n<tool_call>\n{\"name\":\"echo\",\"arguments\":{}}\n</tool_call>\n</div>visible",
+    );
+    assert_eq!(calls.len(), 1);
+    assert_eq!(text, "</div>visible");
+}
+
+#[test]
+fn a_doubled_opener_swallows_a_pipe_form_duplicate_closer() {
+    // `TAG_RE` matches the pipe-form closer `<|/tool_call|>` too, so the
+    // doubled-opener path must recognize it as a closer to swallow, not
+    // leave it dangling in `rest` for `strip_leading_close_tags` (which only
+    // understands `</...>`) to miss.
+    let (text, calls) = parse(
+        "<|tool_call|>\n<|tool_call|>\n{\"name\":\"echo\",\"arguments\":{}}\n<|/tool_call|>\n<|/tool_call|>\nafter",
+    );
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert_eq!(text, "after");
+}
+
+#[test]
 fn a_bare_trailing_opener_is_dropped_not_shown() {
     // An abandoned block at the end of a reply carries no call and no
     // information; showing `<tool_call>` to the user is never right.
