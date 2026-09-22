@@ -23,6 +23,28 @@ pub struct JevRequest {
     pub options: Vec<JevOption>,
     /// Model identifier configured by the host.
     pub model: String,
+    /// What the options are and how to choose among them, when the ranker
+    /// asks something other than "which tool accomplishes the request" — the
+    /// family stage of [`JevStrategy::FamilyThenDecide`] asks which *group*
+    /// of tools applies. `None` is the evaluator's default tool wording.
+    pub instructions: Option<String>,
+}
+
+/// How [`JevRanker`][crate::JevRanker] narrows a catalogue before deciding.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum JevStrategy {
+    /// The retriever shortlists `retrieval_k` candidates, one evaluation
+    /// decides. Bounded by the retriever's recall — a paraphrase it cannot
+    /// bridge never reaches the evaluator.
+    #[default]
+    RetrieveThenDecide,
+    /// The evaluator first picks the candidates' *family* (a toolkit, a
+    /// pack), then decides among every member of the top families, one
+    /// evaluation per family. No retrieval for a family that fits one
+    /// choice, so a paraphrase is only ever judged semantically; a larger
+    /// family is cut to [`JevRankerConfig::MAX_CANDIDATES`] by the retriever.
+    /// Candidates without a family form one `core` family.
+    FamilyThenDecide,
 }
 
 /// The decision returned by a host-provided evaluator.
@@ -53,6 +75,8 @@ pub trait JevEvaluator: Send + Sync + fmt::Debug {
 /// How [`JevRanker`][crate::JevRanker] retrieves and decides.
 #[derive(Clone)]
 pub struct JevRankerConfig {
+    pub(crate) strategy: JevStrategy,
+    pub(crate) max_families: usize,
     pub(crate) retriever: Arc<dyn ToolRanker>,
     pub(crate) retrieval_k: usize,
     pub(crate) min_probability: f64,
@@ -68,11 +92,31 @@ impl JevRankerConfig {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            strategy: JevStrategy::default(),
+            max_families: 2,
             retriever: Arc::new(Bm25Ranker),
             retrieval_k: 20,
             min_probability: 0.05,
             model: "jev-latest".into(),
         }
+    }
+    /// Sets the narrowing strategy.
+    #[must_use]
+    pub fn with_strategy(mut self, value: JevStrategy) -> Self {
+        self.strategy = value;
+        self
+    }
+    /// The narrowing strategy in force.
+    #[must_use]
+    pub fn strategy(&self) -> JevStrategy {
+        self.strategy
+    }
+    /// Sets how many top families the second stage decides among, clamped
+    /// to `1..=8`.
+    #[must_use]
+    pub fn with_max_families(mut self, value: usize) -> Self {
+        self.max_families = value.clamp(1, 8);
+        self
     }
     /// Replaces the retriever.
     #[must_use]
@@ -109,6 +153,8 @@ impl Default for JevRankerConfig {
 impl fmt::Debug for JevRankerConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("JevRankerConfig")
+            .field("strategy", &self.strategy)
+            .field("max_families", &self.max_families)
             .field("retriever", &self.retriever.kind())
             .field("retrieval_k", &self.retrieval_k)
             .field("min_probability", &self.min_probability)
@@ -130,6 +176,9 @@ pub struct JevRanking {
     pub none_probability: f64,
     /// Candidate count shown.
     pub shortlisted: usize,
+    /// [`JevStrategy::FamilyThenDecide`] only: the families the first stage
+    /// chose, best first, with their probabilities.
+    pub families: Vec<(String, f64)>,
     /// Input tokens billed, when reported.
     pub input_tokens: Option<u64>,
     /// Evaluator wall time.

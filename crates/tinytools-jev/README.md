@@ -46,3 +46,19 @@ Implement `JevEvaluator` in the host by translating `JevRequest` into the
 client's wire request and translating its answer into `JevDecision`. Pass that
 implementation to `JevRanker::new`. This keeps transport and runtime choices
 at the host boundary where their policy belongs.
+
+## Strategies
+
+`JevRankerConfig::with_strategy` picks how the catalogue is narrowed before
+the evaluator decides:
+
+- `RetrieveThenDecide` (default): the retriever shortlists `retrieval_k`
+  candidates, one evaluation decides. Bounded by the retriever's recall.
+- `FamilyThenDecide`: one evaluation over the candidates' families (a
+  toolkit, a pack; candidates without one form `core`), then one evaluation
+  per chosen family (`max_families`, default 2, run concurrently) over all
+  its members. No retrieval for a family that fits one choice, so a paraphrase
+  is judged semantically at both steps; a larger family is cut to
+  `MAX_CANDIDATES` by the retriever. The family stage sets
+  `JevRequest::instructions` so the evaluator asks "which group" rather than
+  "which tool"; `JevRanking::families` reports what it chose.
