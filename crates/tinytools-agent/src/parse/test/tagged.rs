@@ -573,10 +573,3 @@ fn the_plural_dsml_wrapper_is_not_a_tag_marker() {
     assert_eq!(calls.len(), 1, "the inner call is the only call: {calls:?}");
     assert_eq!(calls[0].name, "echo");
 }
-
-#[test]
-fn probe_mismatched_close_tag_text() {
-    let response = "<tool_call>\n{\"name\": \"shell\", \"arguments\": {\"command\": \"uptime\"}}\n</arg_value>";
-    let (text, calls) = crate::parse::parse_tool_calls(response);
-    println!("TEXT={text:?} CALLS={}", calls.len());
-}
