@@ -61,7 +61,7 @@ impl JevRanker {
         let request = self.build_request(intent, context, &shortlist)?;
         let started = std::time::Instant::now();
         let decision = self.evaluator.evaluate(&request).await?;
-        let mut ranking = decode(decision, &shortlist, self.config.min_probability);
+        let mut ranking = decode(&decision, &shortlist, self.config.min_probability);
         ranking.hits.truncate(limit);
         ranking.latency = started.elapsed();
         Ok(ranking)
@@ -174,7 +174,7 @@ fn option_text(candidate: &RankCandidate) -> String {
         format!("{summary} (from {family})")
     })
 }
-fn decode(decision: JevDecision, shortlist: &[&RankCandidate], floor: f64) -> JevRanking {
+fn decode(decision: &JevDecision, shortlist: &[&RankCandidate], floor: f64) -> JevRanking {
     let none = decision
         .probabilities
         .get(NONE_OPTION)
