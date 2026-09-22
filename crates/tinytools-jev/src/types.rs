@@ -1,127 +1,139 @@
-//! Configuration and the detailed answer a Jev ranking produces.
+//! Provider-neutral request, response, and configuration types.
 
-use std::{fmt, sync::Arc, time::Duration};
-
+use std::{collections::BTreeMap, fmt, sync::Arc};
 use tinytools::{Bm25Ranker, RankHit, ToolRanker};
+
+/// One candidate presented to an evaluator.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JevOption {
+    /// Opaque candidate key.
+    pub key: String,
+    /// Concise description the evaluator judges.
+    pub description: String,
+}
+
+/// A provider-neutral tool-selection request.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JevRequest {
+    /// The user's request.
+    pub intent: String,
+    /// Recent user turns, oldest first.
+    pub recent_turns: Vec<String>,
+    /// Candidate tools, including `none`.
+    pub options: Vec<JevOption>,
+    /// Model identifier configured by the host.
+    pub model: String,
+}
+
+/// The decision returned by a host-provided evaluator.
+#[derive(Clone, Debug, PartialEq)]
+pub struct JevDecision {
+    /// Probability for each option key.
+    pub probabilities: BTreeMap<String, f64>,
+    /// Confidence in the overall choice.
+    pub choice_confidence: f64,
+    /// Probability that the request needs a tool.
+    pub needs_tool: Option<f64>,
+    /// Input tokens billed, when reported.
+    pub input_tokens: Option<u64>,
+    /// Attempts made by the host client.
+    pub attempts: u32,
+}
+
+/// Evaluates a request without coupling this workspace to a transport.
+#[async_trait::async_trait]
+pub trait JevEvaluator: Send + Sync + fmt::Debug {
+    /// Evaluates one tool-selection request.
+    ///
+    /// # Errors
+    /// Returns a ranking error for invalid requests, timeouts, or provider failures.
+    async fn evaluate(&self, request: &JevRequest) -> Result<JevDecision, tinytools::RankError>;
+}
 
 /// How [`JevRanker`][crate::JevRanker] retrieves and decides.
 #[derive(Clone)]
 pub struct JevRankerConfig {
-    /// Ranks the full catalogue down to a shortlist before Jev sees it.
-    /// [`Bm25Ranker`] by default; a host with an embedding index passes that.
-    pub retriever: Arc<dyn ToolRanker>,
-    /// How many candidates the retriever hands to Jev. Twenty is the
-    /// documented sweet spot: small enough that one Choice question decides
-    /// in ~150 ms, large enough that a lexical retriever's recall is not the
-    /// bottleneck. Never above [`Self::MAX_OPTIONS`].
-    pub retrieval_k: usize,
-    /// Hits whose probability falls below this are dropped, so a caller
-    /// never sees the long tail of a distribution as if it were a match.
-    pub min_probability: f64,
-    /// Deadline for the decision call, on top of the client's own per-attempt
-    /// timeout and retries. A tool search sits in a model's turn; a slow
-    /// answer is worse than a fallback.
-    pub timeout: Duration,
-    /// System One model id. `jev-latest` unless a host pins one.
-    pub model: String,
+    pub(crate) retriever: Arc<dyn ToolRanker>,
+    pub(crate) retrieval_k: usize,
+    pub(crate) min_probability: f64,
+    pub(crate) model: String,
 }
 
 impl JevRankerConfig {
-    /// The most options one Jev Choice question accepts.
+    /// Maximum options accepted, including `none`.
     pub const MAX_OPTIONS: usize = 255;
-
-    /// Defaults: BM25 retrieval to 20, `min_probability` 0.05, 3 s deadline,
-    /// `jev-latest`.
+    /// Maximum real candidates, reserving one slot for `none`.
+    pub const MAX_CANDIDATES: usize = Self::MAX_OPTIONS - 1;
+    /// Returns the default configuration.
     #[must_use]
     pub fn new() -> Self {
         Self {
             retriever: Arc::new(Bm25Ranker),
             retrieval_k: 20,
             min_probability: 0.05,
-            timeout: Duration::from_secs(3),
-            model: "jev-latest".to_owned(),
+            model: "jev-latest".into(),
         }
     }
-
     /// Replaces the retriever.
     #[must_use]
-    pub fn with_retriever(mut self, retriever: Arc<dyn ToolRanker>) -> Self {
-        self.retriever = retriever;
+    pub fn with_retriever(mut self, value: Arc<dyn ToolRanker>) -> Self {
+        self.retriever = value;
         self
     }
-
-    /// Sets the shortlist size, clamped to `1..=MAX_OPTIONS`.
+    /// Sets the shortlist size, clamped to the valid candidate range.
     #[must_use]
-    pub fn with_retrieval_k(mut self, k: usize) -> Self {
-        self.retrieval_k = k.clamp(1, Self::MAX_OPTIONS);
+    pub fn with_retrieval_k(mut self, value: usize) -> Self {
+        self.retrieval_k = value.clamp(1, Self::MAX_CANDIDATES);
         self
     }
-
-    /// Sets the probability floor, clamped to `0.0..=1.0`.
+    /// Sets a finite probability floor, clamped to `0.0..=1.0`.
     #[must_use]
-    pub fn with_min_probability(mut self, p: f64) -> Self {
-        self.min_probability = p.clamp(0.0, 1.0);
+    pub fn with_min_probability(mut self, value: f64) -> Self {
+        if value.is_finite() {
+            self.min_probability = value.clamp(0.0, 1.0);
+        }
         self
     }
-
-    /// Sets the decision deadline.
-    #[must_use]
-    pub fn with_timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
-        self
-    }
-
     /// Sets the model id.
     #[must_use]
-    pub fn with_model(mut self, model: impl Into<String>) -> Self {
-        self.model = model.into();
+    pub fn with_model(mut self, value: impl Into<String>) -> Self {
+        self.model = value.into();
         self
     }
 }
-
 impl Default for JevRankerConfig {
     fn default() -> Self {
         Self::new()
     }
 }
-
 impl fmt::Debug for JevRankerConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("JevRankerConfig")
             .field("retriever", &self.retriever.kind())
             .field("retrieval_k", &self.retrieval_k)
             .field("min_probability", &self.min_probability)
-            .field("timeout", &self.timeout)
             .field("model", &self.model)
             .finish()
     }
 }
 
-/// Everything one Jev ranking learned, beyond the hits the trait returns.
-///
-/// A caller that only wants the hits uses [`tinytools::ToolRanker::rank`];
-/// one that gates on "does this need a tool at all", or that reports cost,
-/// calls [`JevRanker::rank_detailed`][crate::JevRanker::rank_detailed].
+/// Everything one ranking learned, beyond its hits.
 #[derive(Clone, Debug, PartialEq)]
 pub struct JevRanking {
-    /// Ranked hits, best first; each `confidence` is Jev's probability for
-    /// that option.
+    /// Ranked hits.
     pub hits: Vec<RankHit>,
-    /// Jev's confidence in the Choice as a whole, `0.0..=1.0`. Low when the
-    /// distribution is flat — the signal to prefer asking over acting.
+    /// Confidence in the choice.
     pub choice_confidence: f64,
-    /// Probability that the request needs a tool at all, from the `Noul`
-    /// asked alongside. `None` when Jev did not answer it.
+    /// Probability that the request needs a tool.
     pub needs_tool: Option<f64>,
-    /// Probability Jev put on "none of these", the option every request
-    /// carries so an off-catalogue intent is not forced onto a tool.
+    /// Probability assigned to `none`.
     pub none_probability: f64,
-    /// How many candidates the retriever handed to Jev.
+    /// Candidate count shown.
     pub shortlisted: usize,
-    /// Input tokens billed, when the provider reports them.
+    /// Input tokens billed, when reported.
     pub input_tokens: Option<u64>,
-    /// Wall time of the decision call, including the client's retries.
-    pub latency: Duration,
-    /// Attempts the client made.
+    /// Evaluator wall time.
+    pub latency: std::time::Duration,
+    /// Host-client attempt count.
     pub attempts: u32,
 }

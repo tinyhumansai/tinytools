@@ -1,7 +1,7 @@
 # tinytools-jev
 
-A `tinytools::ToolRanker` backed by TypeSafe's Jev decision model, through
-[`tinyjevclient`](https://github.com/tinyhumansai/tinyjevclient).
+A `tinytools::ToolRanker` backed by a host-provided Jev evaluator. The host
+owns its HTTP client, credentials, retry policy, and deadline.
 
 ## Retrieve, then decide
 
@@ -22,9 +22,7 @@ never shows it a whole catalogue:
    `rank_detailed` also returns the Choice confidence, the `needs_tool`
    probability, the `none` probability, tokens, latency and attempts.
 
-Every failure — transport, a rejected request, the deadline — is a
-`RankError` the caller falls back from. The API key never appears in an error
-or a log line.
+Every evaluator failure is a `RankError` the caller falls back from.
 
 ## Limits that shape the design
 
@@ -44,14 +42,7 @@ and at most the caller's few recent turns.
 
 ## Building a ranker
 
-```rust,no_run
-use tinytools_jev::{ClientConfig, JevRanker, JevRankerConfig};
-
-let client = ClientConfig::tinyhumans_openrouter("<tinyhumans api key>");
-let ranker = JevRanker::from_config(client, JevRankerConfig::new())?;
-# Ok::<(), tinytools::RankError>(())
-```
-
-`ClientConfig::new` targets TypeSafe directly, `::openrouter` OpenRouter's
-compatible endpoint, and `::tinyhumans_openrouter` the TinyHumans proxy; the
-`base_url` field is public for a self-hosted proxy.
+Implement `JevEvaluator` in the host by translating `JevRequest` into the
+client's wire request and translating its answer into `JevDecision`. Pass that
+implementation to `JevRanker::new`. This keeps transport and runtime choices
+at the host boundary where their policy belongs.

@@ -38,12 +38,7 @@ tracing = { version = "0.1", default-features = false }
 # `Tool::execute` returns `anyhow::Result` because a tool body calls arbitrary
 # host code and has no useful closed error set of its own.
 anyhow = "1"
-# `tinytools-jev` ranks tools with TypeSafe's Jev decision model. Consumed by
-# pinned revision, as that crate's README asks; only the ranker crate links it,
-# never the vocabulary crate.
-tinyjevclient = { git = "https://github.com/tinyhumansai/tinyjevclient", rev = "e53d5f088ff03fa38c53bac219dab7697b5016c9" }
-# Unit tests for the async trait defaults drive a real executor; `tinytools-jev`
-# also bounds its decision call with a `time` deadline of its own.
+# Unit tests for async traits drive a real executor.
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 
 # Lints apply to every member that opts in with `[lints] workspace = true`, and

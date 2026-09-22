@@ -1,5 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-
 use super::*;
 
 fn candidates() -> Vec<RankCandidate> {
@@ -100,8 +98,11 @@ async fn ranker_is_object_safe_behind_an_arc() {
     let hits = ranker
         .rank("calendar invite", &RankContext::empty(), &candidates(), 3)
         .await
-        .unwrap();
-    assert_eq!(hits[0].key, "calendar_invite");
+        .unwrap_or_default();
+    assert_eq!(
+        hits.first().map(|hit| hit.key.as_str()),
+        Some("calendar_invite")
+    );
 }
 
 #[test]
