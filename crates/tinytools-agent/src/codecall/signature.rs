@@ -248,13 +248,21 @@ fn literal(value: &Value) -> String {
 }
 
 fn is_identifier(name: &str, style: CodeStyle) -> bool {
-    let syntactically_valid = name
-        .chars()
-        .next()
-        .is_some_and(|first| first.is_alphabetic() || first == '_' || first == '$')
-        && name
-            .chars()
-            .all(|ch| ch.is_alphanumeric() || ch == '_' || ch == '$');
+    let mut chars = name.chars();
+    let syntactically_valid = match style {
+        CodeStyle::Python => {
+            chars
+                .next()
+                .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+                && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        }
+        CodeStyle::TypeScript => {
+            chars
+                .next()
+                .is_some_and(|first| first.is_ascii_alphabetic() || matches!(first, '_' | '$'))
+                && chars.all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '$'))
+        }
+    };
     if !syntactically_valid {
         return false;
     }
@@ -297,7 +305,47 @@ fn is_identifier(name: &str, style: CodeStyle) -> bool {
                 | "with"
                 | "yield"
         ),
-        CodeStyle::TypeScript => true,
+        CodeStyle::TypeScript => !matches!(
+            name,
+            "await"
+                | "break"
+                | "case"
+                | "catch"
+                | "class"
+                | "const"
+                | "continue"
+                | "debugger"
+                | "default"
+                | "delete"
+                | "do"
+                | "else"
+                | "enum"
+                | "export"
+                | "extends"
+                | "false"
+                | "finally"
+                | "for"
+                | "function"
+                | "if"
+                | "import"
+                | "in"
+                | "instanceof"
+                | "new"
+                | "null"
+                | "return"
+                | "super"
+                | "switch"
+                | "this"
+                | "throw"
+                | "true"
+                | "try"
+                | "typeof"
+                | "var"
+                | "void"
+                | "while"
+                | "with"
+                | "yield"
+        ),
     }
 }
 

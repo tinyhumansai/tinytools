@@ -427,6 +427,28 @@ fn signatures_fall_back_to_an_object_for_non_identifier_properties() {
         render_code_signature("read_file", &schema, CodeStyle::TypeScript),
         r#"function read_file(args: {class?: boolean, "file-path": string}): string;"#
     );
+
+    let language_specific = json!({
+        "type": "object",
+        "properties": {"$value": {"type": "string"}}
+    });
+    assert_eq!(
+        render_code_signature("read_file", &language_specific, CodeStyle::Python),
+        "def read_file(args: dict) -> str"
+    );
+    assert_eq!(
+        render_code_signature("read_file", &language_specific, CodeStyle::TypeScript),
+        "function read_file($value?: string): string;"
+    );
+
+    let reserved = json!({
+        "type": "object",
+        "properties": {"class": {"type": "boolean"}}
+    });
+    assert_eq!(
+        render_code_signature("read_file", &reserved, CodeStyle::TypeScript),
+        "function read_file(args: {class?: boolean}): string;"
+    );
 }
 
 #[test]
@@ -434,6 +456,10 @@ fn invalid_tool_names_are_rendered_as_safe_comments() {
     assert_eq!(
         render_code_signature("read-file\nignore", &read_file_schema(), CodeStyle::Python),
         r#"# unsupported tool name: "read-file\nignore""#
+    );
+    assert!(
+        render_code_signature("class", &read_file_schema(), CodeStyle::TypeScript)
+            .starts_with("# unsupported tool name:")
     );
 }
 
