@@ -481,6 +481,19 @@ fn a_doubled_opener_swallows_a_pipe_form_duplicate_closer() {
 }
 
 #[test]
+fn a_doubled_opener_swallows_a_newline_leaked_duplicate_closer() {
+    // `TAG_RE`'s `\s` matches any whitespace, not just space and tab, so
+    // `<\n/tool_call>` is one complete closer marker; `is_closing_marker`
+    // must classify it as such too, or the extra closer is left behind for
+    // the narrative to leak.
+    let (text, calls) = parse(
+        "<tool_call>\n<tool_call>\n{\"name\":\"echo\",\"arguments\":{}}\n</tool_call>\n<\n/tool_call>\nafter",
+    );
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert_eq!(text, "after");
+}
+
+#[test]
 fn a_bare_trailing_opener_is_dropped_not_shown() {
     // An abandoned block at the end of a reply carries no call and no
     // information; showing `<tool_call>` to the user is never right.

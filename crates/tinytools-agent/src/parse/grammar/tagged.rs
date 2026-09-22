@@ -243,10 +243,32 @@ impl Tagged {
 }
 
 /// Whether a tag-family marker is a closer (`</tool_call>`, `<|/tool_call|>`).
+/// Skips the same whitespace class `TAG_RE`'s `\s` does (not just space and
+/// tab), so a marker like `<\n/tool_call>` — which the regex matches as one
+/// marker — is still recognized as a closer here.
 fn is_closing_marker(marker: &str) -> bool {
     marker[1..]
-        .trim_start_matches(['|', ' ', '\t'])
+        .trim_start_matches(|c: char| c == '|' || c.is_whitespace())
         .starts_with('/')
+}
+
+/// Canonical closer spellings [`swallow_extra_closers`] holds a partial
+/// match of in stream mode. Not exhaustive of everything `TAG_RE` accepts
+/// (arbitrary interleaved pipes and whitespace) — the same practical
+/// trade-off [`pending_opener`]'s literal list already makes for openers.
+const CLOSER_PREFIXES: &[&str] = &["</tool_call", "</toolcall", "</tool-call", "<|/tool_call"];
+
+/// Whether `trimmed` — which `TAG_RE` did not match as a complete marker —
+/// could still grow into a tag-family closer once more input arrives: it has
+/// no `>` yet and is a case-insensitive prefix of one of [`CLOSER_PREFIXES`].
+fn could_still_become_a_closer(trimmed: &str) -> bool {
+    if trimmed.contains('>') {
+        return false;
+    }
+    CLOSER_PREFIXES.iter().any(|literal| {
+        let n = trimmed.len().min(literal.len());
+        trimmed.is_char_boundary(n) && trimmed[..n].eq_ignore_ascii_case(&literal[..n])
+    })
 }
 
 /// Swallows up to `max` tag-family closers from the front of `rest`
@@ -254,8 +276,10 @@ fn is_closing_marker(marker: &str) -> bool {
 /// Only a recognized closer — matched by [`TAG_RE`], the same grammar as
 /// every opener — is ever eaten, so unrelated markup such as `</div>` is
 /// left for the narrative. In [`ScanMode::Stream`], `None` means the text
-/// ends before it is clear whether another closer is still coming, so the
-/// caller must hold the block back rather than finalize it early.
+/// ends, or breaks off mid-marker, before it is clear whether another closer
+/// is still coming, so the caller must hold the block back rather than
+/// finalize it early and let a partial marker such as `</tool_` leak out as
+/// text before its `call>` tail arrives in a later fragment.
 fn swallow_extra_closers(rest: &str, max: usize, mode: ScanMode) -> Option<usize> {
     let re = TAG_RE.as_ref()?;
     let mut consumed = 0usize;
@@ -273,7 +297,11 @@ fn swallow_extra_closers(rest: &str, max: usize, mode: ScanMode) -> Option<usize
             };
         }
         let Some(m) = re.find(trimmed) else {
-            return Some(consumed);
+            return if mode == ScanMode::Stream && could_still_become_a_closer(trimmed) {
+                None
+            } else {
+                Some(consumed)
+            };
         };
         if m.start() != 0 {
             return Some(consumed);

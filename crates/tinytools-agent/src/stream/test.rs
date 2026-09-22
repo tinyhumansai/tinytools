@@ -267,3 +267,18 @@ fn a_doubled_blocks_extra_closer_split_across_fragments_never_leaks() {
     assert_eq!(calls, 1);
     assert!(!out.contains("tool_call"), "{out:?}");
 }
+
+#[test]
+fn a_doubled_blocks_extra_closer_split_mid_marker_never_leaks() {
+    // The fragment boundary can land *inside* the extra closer itself, not
+    // just before it: `</tool_` in one fragment, `call>` in the next. That
+    // partial marker must be held rather than released as text once its
+    // first fragment is scanned.
+    let (out, calls) = scrub_all(&[
+        "before <tool_call>\n<tool_call>\n{\"name\":\"x\",\"arguments\":{}}\n</tool_call>\n</tool_",
+        "call> after",
+    ]);
+    assert_eq!(out, "before  after");
+    assert_eq!(calls, 1);
+    assert!(!out.contains("tool_"), "{out:?}");
+}
