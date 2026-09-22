@@ -289,7 +289,7 @@ fn unpack_single_object(
     let all_declared = entries
         .iter()
         .all(|(key, _)| params.names.iter().any(|name| name == key));
-    if !entries.is_empty() && all_declared {
+    if (!entries.is_empty() || params.names.len() != 1) && all_declared {
         let Some(Literal::Dict(entries)) = positional.into_iter().next() else {
             return Ok((Vec::new(), Vec::new()));
         };

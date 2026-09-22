@@ -425,7 +425,7 @@ fn signatures_fall_back_to_an_object_for_non_identifier_properties() {
     );
     assert_eq!(
         render_code_signature("read_file", &schema, CodeStyle::TypeScript),
-        r#"function read_file(args: {"file-path": string, class?: boolean}): string;"#
+        r#"function read_file(args: {class?: boolean, "file-path": string}): string;"#
     );
 }
 
