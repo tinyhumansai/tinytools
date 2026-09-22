@@ -46,7 +46,7 @@ fn registry() -> PFormatRegistry {
 }
 
 fn one(body: &str) -> (String, Value) {
-    let calls = parse_calls(body, &registry());
+    let mut calls = parse_calls(body, &registry());
     assert_eq!(
         calls.len(),
         1,
