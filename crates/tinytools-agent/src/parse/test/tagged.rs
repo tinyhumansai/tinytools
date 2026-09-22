@@ -513,3 +513,63 @@ fn a_bare_trailing_opener_is_dropped_not_shown() {
     let (text, _) = parse("before <tool-call>not-json");
     assert_eq!(text, "before <tool-call>not-json");
 }
+
+// ── DeepSeek DSML on the tag family ─────────────────────────────────────────
+
+/// `deepseek` emits its DSML marker on the `tool_call` tag, not only on
+/// `<invoke>`, and with the fullwidth bar its template actually uses.
+/// Observed live from `deepseek-v4-flash` driving the code dialect: the call
+/// parsed as prose, so the turn ended with the model's lead-in and the tool
+/// was never run.
+#[test]
+fn dsml_marker_on_the_tool_call_tag_parses() {
+    let raw = concat!(
+        "I'll look it up.\n\n",
+        "<｜DSML｜tool_call>\n",
+        "{\"name\": \"GMAIL_FETCH_EMAILS\", \"arguments\": {\"max_results\": 1}}\n",
+        "</｜DSML｜tool_call>"
+    );
+    let (text, calls) = crate::parse::parse_tool_calls(raw);
+    assert_eq!(calls.len(), 1, "DSML tool_call tag must parse: {calls:?}");
+    assert_eq!(calls[0].name, "GMAIL_FETCH_EMAILS");
+    assert_eq!(text.trim(), "I'll look it up.");
+}
+
+/// Doubled bars and the ASCII spelling are the same marker.
+#[test]
+fn dsml_marker_variants_on_the_tag_parse() {
+    for open_close in [
+        ("<｜｜DSML｜｜tool_call>", "</｜｜DSML｜｜tool_call>"),
+        ("<|DSML|tool_call>", "</|DSML|tool_call>"),
+        ("<｜DSML｜tool_call>", "<｜DSML｜tool_call>"),
+    ] {
+        let raw = format!(
+            "{}\n{{\"name\": \"echo\", \"arguments\": {{}}}}\n{}",
+            open_close.0, open_close.1
+        );
+        let (_, calls) = crate::parse::parse_tool_calls(&raw);
+        assert_eq!(
+            calls.len(),
+            1,
+            "variant {open_close:?} must parse: {calls:?}"
+        );
+        assert_eq!(calls[0].name, "echo");
+    }
+}
+
+/// The DSML *wrapper* element is plural and is not a call marker; treating it
+/// as one would open a block on the wrapper and close it on the first inner
+/// tag, losing the call inside.
+#[test]
+fn the_plural_dsml_wrapper_is_not_a_tag_marker() {
+    let raw = concat!(
+        "<｜DSML｜tool_calls>\n",
+        "<｜DSML｜tool_call>\n",
+        "{\"name\": \"echo\", \"arguments\": {}}\n",
+        "</｜DSML｜tool_call>\n",
+        "</｜DSML｜tool_calls>"
+    );
+    let (_, calls) = crate::parse::parse_tool_calls(raw);
+    assert_eq!(calls.len(), 1, "the inner call is the only call: {calls:?}");
+    assert_eq!(calls[0].name, "echo");
+}

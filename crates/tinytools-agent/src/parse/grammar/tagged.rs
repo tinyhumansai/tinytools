@@ -9,7 +9,13 @@
 //!   templates);
 //! * sentinel pipes leaked into the markers, in any position:
 //!   `<|tool_call>…<tool_call|>`, `<|tool_call|>…<|tool_call|>`,
-//!   `…</tool_call|>`;
+//!   `…</tool_call|>`, including the fullwidth `｜` those templates
+//!   actually emit;
+//! * a `DeepSeek` DSML marker on the tag itself,
+//!   `<｜DSML｜tool_call>…</｜DSML｜tool_call>` — the same marker
+//!   [`super::invoke_xml`] already accepts on `<invoke>`, which this family
+//!   used to miss, so a `deepseek` turn that chose the tag form over the
+//!   invoke form parsed as prose and the call was silently dropped;
 //! * a `call:` prefix before the body;
 //! * a fenced block instead of a tag, ```` ```tool_call … ``` ````, sometimes
 //!   closed by a stray `</tool_call>`;
@@ -39,11 +45,17 @@ use crate::types::{CallSource, ParseOptions, ParsedToolCall};
 pub(crate) struct Tagged;
 
 /// Any tag-family marker: `<tool_call>`, `<toolcall>`, `<tool-call>`, with
-/// pipes, a slash, or whitespace leaked in, and an optional attribute list.
-/// `<tool_calls>` (plural, a JSON key) and `<tool_callable>` do not match:
-/// the name must end at a pipe, slash, whitespace, or `>`.
-static TAG_RE: LazyLock<Option<Regex>> =
-    LazyLock::new(|| Regex::new(r"(?i)<[|/\s]*tool[_-]?call(?:[|/\s]*|\s+[^>]*)>").ok());
+/// pipes (ASCII `|` or the fullwidth `｜` chat templates emit), a slash,
+/// whitespace, or a `DeepSeek` DSML marker leaked in, and an optional
+/// attribute list. `<tool_calls>` (plural, a JSON key, and the DSML wrapper
+/// element) and `<tool_callable>` do not match: the name must end at a pipe,
+/// slash, whitespace, or `>`.
+static TAG_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)<[|\u{ff5c}/\s]*(?:DSML[|\u{ff5c}/\s]*)?tool[_-]?call(?:[|\u{ff5c}/\s]*|\s+[^>]*)>",
+    )
+    .ok()
+});
 
 /// Openers a fenced block can carry. `` ```tool_calls `` (plural) is listed
 /// separately from `` ```tool_call `` rather than relying on a prefix match:
