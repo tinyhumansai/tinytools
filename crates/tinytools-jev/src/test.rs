@@ -95,7 +95,7 @@ fn configuration_reserves_none_slot_and_rejects_nan() {
         .with_retrieval_k(usize::MAX)
         .with_min_probability(f64::NAN);
     assert_eq!(config.retrieval_k, JevRankerConfig::MAX_CANDIDATES);
-    assert_eq!(config.min_probability, 0.05);
+    assert!((config.min_probability - 0.05).abs() < f64::EPSILON);
 }
 
 #[test]
