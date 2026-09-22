@@ -3,10 +3,13 @@
 //! A host supplies [`JevEvaluator`], retaining ownership of transport,
 //! authentication, retry, and deadline policy.
 
+mod family;
 #[cfg(test)]
 mod test;
 mod types;
-pub use types::{JevDecision, JevEvaluator, JevOption, JevRankerConfig, JevRanking, JevRequest};
+pub use types::{
+    JevDecision, JevEvaluator, JevOption, JevRankerConfig, JevRanking, JevRequest, JevStrategy,
+};
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -14,7 +17,7 @@ use std::{
     time::Duration,
 };
 use tinytools::{RankCandidate, RankContext, RankError, RankHit, ToolRanker};
-const NONE_OPTION: &str = "none";
+pub(crate) const NONE_OPTION: &str = "none";
 const MAX_SUMMARY_CHARS: usize = 240;
 
 /// Ranks tools using a host-provided evaluator.
@@ -36,6 +39,11 @@ impl JevRanker {
     pub fn config(&self) -> &JevRankerConfig {
         &self.config
     }
+    /// The evaluator this ranker decides with.
+    #[must_use]
+    pub fn evaluator(&self) -> &Arc<dyn JevEvaluator> {
+        &self.evaluator
+    }
     /// Ranks and returns all decision metadata.
     ///
     /// # Errors
@@ -53,6 +61,9 @@ impl JevRanker {
         }
         if candidates.is_empty() || limit == 0 {
             return Ok(JevRanking::empty());
+        }
+        if self.config.strategy == JevStrategy::FamilyThenDecide {
+            return family::rank(self, intent, context, candidates, limit).await;
         }
         let shortlist = self.shortlist(intent, context, candidates).await?;
         if shortlist.is_empty() {
@@ -119,6 +130,7 @@ impl JevRanker {
             recent_turns: context.recent_turns.clone(),
             options,
             model: self.config.model.clone(),
+            instructions: None,
         })
     }
 }
@@ -140,20 +152,21 @@ impl ToolRanker for JevRanker {
     }
 }
 impl JevRanking {
-    fn empty() -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
             hits: vec![],
             choice_confidence: 0.0,
             needs_tool: None,
             none_probability: 0.0,
             shortlisted: 0,
+            families: vec![],
             input_tokens: None,
             latency: Duration::ZERO,
             attempts: 0,
         }
     }
 }
-fn validate_candidates(candidates: &[RankCandidate]) -> Result<(), RankError> {
+pub(crate) fn validate_candidates(candidates: &[RankCandidate]) -> Result<(), RankError> {
     let mut keys = BTreeSet::new();
     for c in candidates {
         if c.key == NONE_OPTION {
@@ -165,9 +178,12 @@ fn validate_candidates(candidates: &[RankCandidate]) -> Result<(), RankError> {
     }
     Ok(())
 }
-fn option_text(candidate: &RankCandidate) -> String {
-    let mut summary: String = candidate.summary.chars().take(MAX_SUMMARY_CHARS).collect();
-    if candidate.summary.chars().count() > MAX_SUMMARY_CHARS {
+pub(crate) fn option_text(candidate: &RankCandidate) -> String {
+    option_text_clipped(candidate, MAX_SUMMARY_CHARS)
+}
+pub(crate) fn option_text_clipped(candidate: &RankCandidate, max_chars: usize) -> String {
+    let mut summary: String = candidate.summary.chars().take(max_chars).collect();
+    if candidate.summary.chars().count() > max_chars {
         summary.push('…');
     }
     candidate.family.as_ref().map_or(summary.clone(), |family| {
@@ -207,6 +223,7 @@ fn decode(decision: &JevDecision, shortlist: &[&RankCandidate], floor: f64) -> J
         needs_tool: decision.needs_tool,
         none_probability: none,
         shortlisted: shortlist.len(),
+        families: vec![],
         input_tokens: decision.input_tokens,
         latency: Duration::ZERO,
         attempts: decision.attempts,

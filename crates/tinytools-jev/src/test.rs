@@ -207,3 +207,155 @@ fn configuration_builders_are_observable() {
     assert!((config.min_probability - 1.0).abs() < f64::EPSILON);
     assert_eq!(config.model, "jev-pinned");
 }
+
+/// Answers the family stage and each family stage from a script keyed by
+/// the request's instructions, so the two-stage flow is observable.
+#[derive(Debug)]
+struct FamilyEvaluator {
+    seen: Mutex<Vec<JevRequest>>,
+}
+#[async_trait::async_trait]
+impl JevEvaluator for FamilyEvaluator {
+    async fn evaluate(&self, request: &JevRequest) -> Result<JevDecision, RankError> {
+        if let Ok(mut seen) = self.seen.lock() {
+            seen.push(request.clone());
+        }
+        let instructions = request.instructions.clone().unwrap_or_default();
+        let probabilities: BTreeMap<String, f64> = if instructions.starts_with("Which group") {
+            [
+                ("slack", 0.7),
+                ("gmail", 0.2),
+                ("core", 0.05),
+                ("none", 0.05),
+            ]
+        } else if instructions.contains("`slack`") {
+            [
+                ("SLACK_SEND_MESSAGE", 0.8),
+                ("SLACK_LIST", 0.1),
+                ("none", 0.1),
+                ("_", 0.0),
+            ]
+        } else {
+            [
+                ("GMAIL_SEND_EMAIL", 0.6),
+                ("GMAIL_FETCH", 0.3),
+                ("none", 0.1),
+                ("_", 0.0),
+            ]
+        }
+        .into_iter()
+        .filter(|(k, _)| *k != "_")
+        .map(|(k, v)| (k.to_owned(), v))
+        .collect();
+        Ok(JevDecision {
+            probabilities,
+            choice_confidence: 0.7,
+            needs_tool: Some(0.9),
+            input_tokens: Some(100),
+            attempts: 1,
+        })
+    }
+}
+
+fn family_catalogue() -> Vec<RankCandidate> {
+    vec![
+        RankCandidate::new("SLACK_SEND_MESSAGE", "Send a message").with_family("slack"),
+        RankCandidate::new("SLACK_LIST", "List channels").with_family("slack"),
+        RankCandidate::new("GMAIL_SEND_EMAIL", "Send an email").with_family("gmail"),
+        RankCandidate::new("GMAIL_FETCH", "Fetch emails").with_family("gmail"),
+        RankCandidate::new("file_read", "Read a file"),
+    ]
+}
+
+#[tokio::test]
+async fn family_then_decide_asks_the_family_first_then_each_chosen_family() {
+    let evaluator = Arc::new(FamilyEvaluator {
+        seen: Mutex::new(vec![]),
+    });
+    let ranker = JevRanker::new(
+        evaluator.clone(),
+        JevRankerConfig::new().with_strategy(JevStrategy::FamilyThenDecide),
+    );
+    let ranking = ranker
+        .rank_detailed("ping alex", &RankContext::empty(), &family_catalogue(), 3)
+        .await
+        .ok();
+
+    let seen: Vec<JevRequest> = evaluator
+        .seen
+        .lock()
+        .map(|seen| seen.clone())
+        .unwrap_or_default();
+    assert_eq!(seen.len(), 3, "one family stage, then slack and gmail");
+    assert_eq!(
+        seen.first().map(|r| r.options.len()),
+        Some(4),
+        "slack, gmail, core, none"
+    );
+    assert!(seen.first().is_some_and(|r| {
+        r.options
+            .iter()
+            .any(|o| o.key == "core" && o.description.contains("file read"))
+    }));
+    assert!(
+        seen.get(1)
+            .and_then(|r| r.instructions.as_deref())
+            .is_some_and(|i| i.contains("`slack`"))
+    );
+    assert!(
+        seen.get(2)
+            .and_then(|r| r.instructions.as_deref())
+            .is_some_and(|i| i.contains("`gmail`"))
+    );
+
+    assert_eq!(
+        ranking.as_ref().map(|r| r.families.clone()),
+        Some(vec![("slack".to_owned(), 0.7), ("gmail".to_owned(), 0.2)])
+    );
+    let keys: Option<Vec<&str>> = ranking
+        .as_ref()
+        .map(|r| r.hits.iter().map(|h| h.key.as_str()).collect());
+    assert_eq!(
+        keys,
+        Some(vec!["SLACK_SEND_MESSAGE", "GMAIL_SEND_EMAIL", "SLACK_LIST"])
+    );
+    assert!(
+        ranking
+            .as_ref()
+            .and_then(|r| r.hits.first())
+            .is_some_and(|h| (h.score - 0.56).abs() < 1e-9)
+    );
+    assert_eq!(ranking.as_ref().map(|r| r.shortlisted), Some(4));
+    assert_eq!(ranking.as_ref().and_then(|r| r.input_tokens), Some(200));
+}
+
+#[tokio::test]
+async fn family_then_decide_with_one_family_skips_the_family_stage() {
+    let evaluator = Arc::new(FamilyEvaluator {
+        seen: Mutex::new(vec![]),
+    });
+    let ranker = JevRanker::new(
+        evaluator.clone(),
+        JevRankerConfig::new().with_strategy(JevStrategy::FamilyThenDecide),
+    );
+    let only_slack: Vec<RankCandidate> = family_catalogue()
+        .into_iter()
+        .filter(|c| c.family.as_deref() == Some("slack"))
+        .collect();
+    let ranking = ranker
+        .rank_detailed("ping alex", &RankContext::empty(), &only_slack, 3)
+        .await
+        .ok();
+    assert_eq!(evaluator.seen.lock().map_or(0, |s| s.len()), 1);
+    assert_eq!(
+        ranking.as_ref().map(|r| r.families.clone()),
+        Some(vec![("slack".to_owned(), 1.0)])
+    );
+    assert_eq!(
+        ranking
+            .as_ref()
+            .and_then(|r| r.hits.first())
+            .map(|h| h.key.as_str()),
+        Some("SLACK_SEND_MESSAGE")
+    );
+}
