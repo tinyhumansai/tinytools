@@ -32,6 +32,12 @@ pub(crate) const MAX_PROPERTIES: usize = 16;
 /// Zero-parameter tools render as `def name() -> str` / `function name(): string;`.
 #[must_use]
 pub fn render_code_signature(name: &str, schema: &Value, style: CodeStyle) -> String {
+    if !is_identifier(name, style) {
+        return format!(
+            "# unsupported tool name: {}",
+            Value::String(name.to_owned())
+        );
+    }
     let params = PFormatToolParams::from_schema(schema);
     let properties = schema.get("properties").and_then(Value::as_object);
     let required: Vec<&str> = schema
@@ -39,6 +45,20 @@ pub fn render_code_signature(name: &str, schema: &Value, style: CodeStyle) -> St
         .and_then(Value::as_array)
         .map(|names| names.iter().filter_map(Value::as_str).collect())
         .unwrap_or_default();
+
+    let has_invalid_param = params
+        .names
+        .iter()
+        .any(|param| !is_identifier(param, style));
+    if has_invalid_param {
+        return match style {
+            CodeStyle::Python => format!("def {name}(args: dict) -> str"),
+            CodeStyle::TypeScript => format!(
+                "function {name}(args: {}): string;",
+                render_code_type(schema, style)
+            ),
+        };
+    }
 
     let mut out = String::new();
     match style {
@@ -222,8 +242,62 @@ fn render_object(
 /// A JSON value spelled as a type-level literal (`"a"`, `1`, `true`).
 fn literal(value: &Value) -> String {
     match value {
-        Value::String(s) => format!("{s:?}"),
+        Value::String(s) => Value::String(s.clone()).to_string(),
         other => other.to_string(),
+    }
+}
+
+fn is_identifier(name: &str, style: CodeStyle) -> bool {
+    let syntactically_valid = name
+        .chars()
+        .next()
+        .is_some_and(|first| first.is_alphabetic() || first == '_' || first == '$')
+        && name
+            .chars()
+            .all(|ch| ch.is_alphanumeric() || ch == '_' || ch == '$');
+    if !syntactically_valid {
+        return false;
+    }
+    match style {
+        CodeStyle::Python => !matches!(
+            name,
+            "False"
+                | "None"
+                | "True"
+                | "and"
+                | "as"
+                | "assert"
+                | "async"
+                | "await"
+                | "break"
+                | "class"
+                | "continue"
+                | "def"
+                | "del"
+                | "elif"
+                | "else"
+                | "except"
+                | "finally"
+                | "for"
+                | "from"
+                | "global"
+                | "if"
+                | "import"
+                | "in"
+                | "is"
+                | "lambda"
+                | "nonlocal"
+                | "not"
+                | "or"
+                | "pass"
+                | "raise"
+                | "return"
+                | "try"
+                | "while"
+                | "with"
+                | "yield"
+        ),
+        CodeStyle::TypeScript => true,
     }
 }
 
