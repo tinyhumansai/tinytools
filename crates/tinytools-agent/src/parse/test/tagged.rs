@@ -573,3 +573,26 @@ fn the_plural_dsml_wrapper_is_not_a_tag_marker() {
     assert_eq!(calls.len(), 1, "the inner call is the only call: {calls:?}");
     assert_eq!(calls[0].name, "echo");
 }
+
+#[test]
+fn repro_dsml_closers_on_a_tool_call_opener() {
+    let text = concat!(
+        "Heredocs aren't working in this shell. Writing the script to a file instead.\n\n",
+        "<tool_call>\n",
+        "{\"arguments\":{\"path\":\"work/extract.py\",\"content\":\"import re\"}}</\u{ff5c}DSML\u{ff5c} parameter>\n",
+        "<\u{ff5c}DSML\u{ff5c} parameter name=\"name\":\"file_write\"}</\u{ff5c}DSML\u{ff5c} parameter>\n",
+        "</\u{ff5c}DSML\u{ff5c} invoke>\n",
+        "<\u{ff5c}DSML\u{ff5c} invoke>\n",
+        "{\"arguments\":{\"category\":\"read\",\"command\":\"ls\"},\"name\":\"shell\"}</\u{ff5c}DSML\u{ff5c} parameter>\n",
+        "</\u{ff5c}DSML\u{ff5c} invoke>\n",
+        "</\u{ff5c}DSML\u{ff5c} calls>",
+    );
+    let out = parse_known(text, &["file_write", "shell"]);
+    let (narrative, calls) = (out.text.clone(), out.calls.clone());
+    eprintln!("NARRATIVE: {narrative:?}");
+    eprintln!("CALLS: {}", calls.len());
+    for c in &calls {
+        eprintln!("  name={:?} args={}", c.name, c.arguments);
+    }
+    panic!("inspection");
+}
