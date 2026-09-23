@@ -72,9 +72,9 @@ pub fn native_instructions() -> String {
     [
         "## Tool Use Protocol",
         "",
-        "When a tool is needed, emit tool calls directly via the model's native tool-calling output.",
-        "Do not only narrate intent (for example, avoid \"Let me check...\") without emitting the tool call.",
-        "After tool results are provided, continue reasoning and then produce the final answer.",
+        "When you need a tool, call it in this response through native tool-calling.",
+        "A short line saying what you are about to do is fine, but the tool call must be in the same message; never end a turn on an announcement.",
+        "After the results arrive, keep going until you can give the final answer.",
         "",
     ]
     .join("\n")

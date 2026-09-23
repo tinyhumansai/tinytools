@@ -109,19 +109,3 @@ pub(crate) fn find_json_end(input: &str) -> Option<usize> {
 
     None
 }
-
-/// Drops any run of leading closing tags (`</x>`) and the whitespace around
-/// them. A truncated closing tag with no `>` consumes the rest.
-#[must_use]
-pub(crate) fn strip_leading_close_tags(mut input: &str) -> &str {
-    loop {
-        let trimmed = input.trim_start();
-        if !trimmed.starts_with("</") {
-            return trimmed;
-        }
-        let Some(close_end) = trimmed.find('>') else {
-            return "";
-        };
-        input = &trimmed[close_end + 1..];
-    }
-}

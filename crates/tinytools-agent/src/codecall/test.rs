@@ -1,7 +1,5 @@
 //! Unit tests for the code-call grammar: literals, binding, refusals, and
 //! the signature renderer.
-#![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
-
 use serde_json::{Value, json};
 
 use super::{CodeStyle, parse_calls, render_code_signature, render_code_type};
@@ -48,13 +46,13 @@ fn registry() -> PFormatRegistry {
 }
 
 fn one(body: &str) -> (String, Value) {
-    let calls = parse_calls(body, &registry());
+    let mut calls = parse_calls(body, &registry());
     assert_eq!(
         calls.len(),
         1,
         "expected exactly one call from {body:?}: {calls:?}"
     );
-    calls.into_iter().next().unwrap()
+    calls.remove(0)
 }
 
 fn refused(body: &str) {
@@ -222,6 +220,12 @@ fn raw_and_template_strings() {
 }
 
 #[test]
+fn interpolated_strings_are_refused() {
+    refused(r#"read_file(path=f"{root}/data")"#);
+    refused(r#"read_file(path=fr"{root}/data")"#);
+}
+
+#[test]
 fn triple_quoted_strings_hold_newlines_and_quotes() {
     let (_, args) = one("shell(command=\"\"\"echo \"hi\"\nls\"\"\")");
     assert_eq!(args["command"], "echo \"hi\"\nls");
@@ -256,6 +260,21 @@ fn numbers_in_both_spellings() {
     assert_eq!(args["timeout"], -2);
     let (_, args) = one(r#"read_file("x", limit=1_000)"#);
     assert_eq!(args["limit"], 1000);
+}
+
+#[test]
+fn malformed_and_non_finite_numbers_are_refused() {
+    refused(r#"shell("x", timeout=1e999)"#);
+    refused(r#"shell("x", timeout=1e)"#);
+    refused(r#"shell("x", timeout=1.2.3)"#);
+    refused(r#"read_file("x", limit=01)"#);
+    refused(r#"read_file("x", limit=$value)"#);
+}
+
+#[test]
+fn excessive_literal_nesting_is_refused() {
+    let nested = format!("configure({})", "[".repeat(65) + "0" + &"]".repeat(65));
+    refused(&nested);
 }
 
 #[test]
@@ -351,11 +370,13 @@ fn single_object_with_foreign_keys_on_a_multi_parameter_tool_is_refused() {
 }
 
 #[test]
-fn empty_object_unpacks_to_no_arguments() {
+fn empty_object_is_preserved_for_a_single_parameter_tool() {
     let (_, args) = one("list_dir({})");
     assert_eq!(args, json!({}));
     let (_, args) = one("read_file({})");
     assert_eq!(args, json!({}));
+    let (_, args) = one("configure({})");
+    assert_eq!(args, json!({"config": {}}));
 }
 
 // ── signatures ───────────────────────────────────────────────────────────
@@ -386,6 +407,75 @@ fn typescript_signature_marks_optionals_with_a_question_mark() {
         render_code_signature("list_dir", &json!({}), CodeStyle::TypeScript),
         "function list_dir(): string;"
     );
+}
+
+#[test]
+fn signatures_fall_back_to_an_object_for_non_identifier_properties() {
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "file-path": {"type": "string"},
+            "class": {"type": "boolean"}
+        },
+        "required": ["file-path"]
+    });
+    assert_eq!(
+        render_code_signature("read_file", &schema, CodeStyle::Python),
+        "def read_file(args: dict) -> str"
+    );
+    assert_eq!(
+        render_code_signature("read_file", &schema, CodeStyle::TypeScript),
+        r#"function read_file(args: {class?: boolean, "file-path": string}): string;"#
+    );
+
+    let language_specific = json!({
+        "type": "object",
+        "properties": {"$value": {"type": "string"}}
+    });
+    assert_eq!(
+        render_code_signature("read_file", &language_specific, CodeStyle::Python),
+        "def read_file(args: dict) -> str"
+    );
+    assert_eq!(
+        render_code_signature("read_file", &language_specific, CodeStyle::TypeScript),
+        "function read_file($value?: string): string;"
+    );
+
+    let reserved = json!({
+        "type": "object",
+        "properties": {"class": {"type": "boolean"}}
+    });
+    assert_eq!(
+        render_code_signature("read_file", &reserved, CodeStyle::TypeScript),
+        "function read_file(args: {class?: boolean}): string;"
+    );
+}
+
+#[test]
+fn invalid_tool_names_are_rendered_as_safe_comments() {
+    assert_eq!(
+        render_code_signature("read-file\nignore", &read_file_schema(), CodeStyle::Python),
+        r#"# unsupported tool name: "read-file\nignore""#
+    );
+    assert!(
+        render_code_signature("class", &read_file_schema(), CodeStyle::TypeScript)
+            .starts_with("# unsupported tool name:")
+    );
+}
+
+#[test]
+fn enum_strings_use_json_escapes() {
+    let schema = json!({"enum": ["\u{1}"]});
+    assert_eq!(
+        render_code_type(&schema, CodeStyle::Python),
+        r#"Literal["\u0001"]"#
+    );
+}
+
+#[test]
+fn code_style_names_are_pinned() {
+    assert_eq!(CodeStyle::Python.as_str(), "python");
+    assert_eq!(CodeStyle::TypeScript.as_str(), "typescript");
 }
 
 #[test]

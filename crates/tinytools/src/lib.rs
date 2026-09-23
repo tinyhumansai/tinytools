@@ -127,7 +127,9 @@ pub use permission::PermissionLevel;
 pub use policy::{
     ToolAccess, ToolDisplay, ToolPolicy, ToolReplay, ToolRuntime, ToolSideEffects, WorkspaceAccess,
 };
-pub use rank::{Bm25Ranker, RankCandidate, RankContext, RankError, RankHit, ToolRanker};
+pub use rank::{
+    Bm25Index, Bm25Ranker, RankCandidate, RankContext, RankError, RankHit, ToolRanker, tokenize,
+};
 pub use result::{FileData, ImageData, ToolContent, ToolControl, ToolErrorKind, ToolResult};
 pub use spec::ToolSpec;
 pub use tool::{Tool, ToolExposure};

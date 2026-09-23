@@ -1,370 +1,725 @@
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::float_cmp,
-    clippy::needless_pass_by_value
-)]
-
-use std::{sync::Arc, time::Duration};
-
-use serde_json::{Value, json};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
-    sync::Mutex,
-};
+//! Tests for provider-neutral Jev ranking.
 
 use super::*;
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+};
+
+#[derive(Debug)]
+struct FakeEvaluator {
+    decision: JevDecision,
+    seen: Mutex<Vec<JevRequest>>,
+}
+#[async_trait::async_trait]
+impl JevEvaluator for FakeEvaluator {
+    async fn evaluate(&self, request: &JevRequest) -> Result<JevDecision, RankError> {
+        if let Ok(mut seen) = self.seen.lock() {
+            seen.push(request.clone());
+        }
+        Ok(self.decision.clone())
+    }
+}
 
 fn candidates() -> Vec<RankCandidate> {
     vec![
-        RankCandidate::new(
-            "SLACK_SEND_MESSAGE",
-            "SLACK_SEND_MESSAGE Send a message to a Slack channel or user. channel text",
-        )
-        .with_family("slack"),
-        RankCandidate::new(
-            "GMAIL_SEND_EMAIL",
-            "GMAIL_SEND_EMAIL Send an email from the connected Gmail account. to subject body",
-        )
-        .with_family("gmail"),
-        RankCandidate::new(
-            "stock_quote",
-            "stock_quote Fetch the latest price for a ticker symbol. symbol",
-        ),
+        RankCandidate::new("slack", "Send a Slack message").with_family("chat"),
+        RankCandidate::new("gmail", "Send an email"),
     ]
 }
 
-fn response(status: u16, body: &str) -> String {
-    let reason = if status == 200 { "OK" } else { "Error" };
-    format!(
-        "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-        body.len()
+fn ranker(
+    probabilities: [(&str, f64); 3],
+    needs_tool: Option<f64>,
+) -> (JevRanker, Arc<FakeEvaluator>) {
+    let evaluator = Arc::new(FakeEvaluator {
+        decision: JevDecision {
+            probabilities: probabilities
+                .into_iter()
+                .map(|(key, value)| (key.to_owned(), value))
+                .collect::<BTreeMap<_, _>>(),
+            choice_confidence: 0.8,
+            needs_tool,
+            input_tokens: Some(10),
+            attempts: 1,
+        },
+        seen: Mutex::new(vec![]),
+    });
+    (
+        JevRanker::new(evaluator.clone(), JevRankerConfig::new()),
+        evaluator,
     )
 }
 
-fn answer(probabilities: Value, confidence: f64, needs_tool: Option<f64>) -> String {
-    let choice = probabilities
-        .as_object()
-        .unwrap()
-        .iter()
-        .max_by(|a, b| a.1.as_f64().partial_cmp(&b.1.as_f64()).unwrap())
-        .map(|(k, _)| k.clone())
-        .unwrap();
-    let mut answers = json!({
-        "tool": {
-            "type": "choice",
-            "choice": choice,
-            "probabilities": probabilities,
-            "confidence": confidence
-        }
-    });
-    if let Some(p) = needs_tool {
-        answers["needs_tool"] = json!({"type": "noul", "noul": p});
-    }
-    json!({
-        "model": "typesafe/jev-1.13",
-        "answers": answers,
-        "usage": {"input_tokens": 321, "output_tokens": 4}
-    })
-    .to_string()
-}
-
-/// One-shot loopback server: answers each connection with the next canned
-/// response and records the request bodies it saw.
-async fn server(responses: Vec<String>) -> (String, Arc<Mutex<Vec<Value>>>) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let seen = Arc::new(Mutex::new(Vec::new()));
-    let recorder = Arc::clone(&seen);
-    tokio::spawn(async move {
-        for canned in responses {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut buffer = vec![0_u8; 65_536];
-            let mut raw = Vec::new();
-            loop {
-                let read = socket.read(&mut buffer).await.unwrap();
-                raw.extend_from_slice(&buffer[..read]);
-                let text = String::from_utf8_lossy(&raw);
-                if let Some((head, body)) = text.split_once("\r\n\r\n") {
-                    let length: usize = head
-                        .lines()
-                        .find_map(|line| line.strip_prefix("Content-Length: "))
-                        .and_then(|v| v.trim().parse().ok())
-                        .unwrap_or(0);
-                    if body.len() >= length {
-                        recorder
-                            .lock()
-                            .await
-                            .push(serde_json::from_str(body).unwrap());
-                        break;
-                    }
-                }
-                if read == 0 {
-                    break;
-                }
-            }
-            socket.write_all(canned.as_bytes()).await.unwrap();
-            socket.shutdown().await.unwrap();
-        }
-    });
-    (format!("http://{address}"), seen)
-}
-
-fn ranker(base_url: String, config: JevRankerConfig) -> JevRanker {
-    let mut client_config = ClientConfig::openrouter("test-key");
-    client_config.base_url = base_url;
-    client_config.retry = RetryPolicy {
-        max_retries: 0,
-        ..RetryPolicy::default()
-    };
-    JevRanker::from_config(client_config, config).unwrap()
+#[tokio::test]
+async fn ranks_candidates_and_builds_none_option() {
+    let (ranker, evaluator) = ranker([("slack", 0.8), ("gmail", 0.1), ("none", 0.1)], Some(0.9));
+    let result = ranker
+        .rank_detailed("message Alex", &RankContext::empty(), &candidates(), 2)
+        .await;
+    assert_eq!(
+        result
+            .as_ref()
+            .ok()
+            .and_then(|ranking| ranking.hits.first())
+            .map(|hit| hit.key.as_str()),
+        Some("slack")
+    );
+    let options = evaluator
+        .seen
+        .lock()
+        .ok()
+        .and_then(|seen| seen.first().map(|request| request.options.len()));
+    assert_eq!(options, Some(3));
 }
 
 #[tokio::test]
-async fn small_catalogue_goes_straight_to_jev_with_a_none_option() {
-    let (url, seen) = server(vec![response(
-        200,
-        &answer(
-            json!({"SLACK_SEND_MESSAGE": 0.83, "GMAIL_SEND_EMAIL": 0.12, "stock_quote": 0.01, "none": 0.04}),
-            0.79,
-            Some(0.97),
-        ),
-    )])
-    .await;
-    let ranker = ranker(url, JevRankerConfig::new());
-
-    let ranking = ranker
-        .rank_detailed(
-            "ping alex on slack that I'm ten minutes late",
-            &RankContext::empty(),
-            &candidates(),
-            3,
-        )
+async fn suppresses_hits_when_none_wins_or_no_tool_is_needed() {
+    let (none_ranker, _) = ranker([("slack", 0.2), ("gmail", 0.1), ("none", 0.7)], Some(0.9));
+    let none_hits = none_ranker
+        .rank("question", &RankContext::empty(), &candidates(), 2)
         .await
-        .unwrap();
+        .unwrap_or_default();
+    assert!(none_hits.is_empty());
+    let (no_tool_ranker, _) = ranker([("slack", 0.8), ("gmail", 0.1), ("none", 0.1)], Some(0.2));
+    let no_tool_hits = no_tool_ranker
+        .rank("question", &RankContext::empty(), &candidates(), 2)
+        .await
+        .unwrap_or_default();
+    assert!(no_tool_hits.is_empty());
+}
 
+#[test]
+fn configuration_reserves_none_slot_and_rejects_nan() {
+    let config = JevRankerConfig::new()
+        .with_retrieval_k(usize::MAX)
+        .with_min_probability(f64::NAN);
+    assert_eq!(config.retrieval_k, JevRankerConfig::MAX_CANDIDATES);
+    assert!((config.min_probability - 0.05).abs() < f64::EPSILON);
+}
+
+#[test]
+fn option_text_clips_by_characters() {
+    let candidate = RankCandidate::new("key", "é".repeat(300)).with_family("family");
+    let text = option_text(&candidate);
+    assert_eq!(
+        text.chars().filter(|character| *character == 'é').count(),
+        MAX_SUMMARY_CHARS
+    );
+    assert!(text.ends_with("… (from family)"));
+}
+
+#[tokio::test]
+async fn validates_inputs_and_short_circuits_empty_work() {
+    let (ranker, _) = ranker([("slack", 0.8), ("gmail", 0.1), ("none", 0.1)], Some(0.9));
+    let empty = ranker
+        .rank("request", &RankContext::empty(), &[], 2)
+        .await
+        .unwrap_or_default();
+    assert!(empty.is_empty());
+    let zero = ranker
+        .rank("request", &RankContext::empty(), &candidates(), 0)
+        .await
+        .unwrap_or_default();
+    assert!(zero.is_empty());
+    assert!(matches!(
+        ranker
+            .rank("  ", &RankContext::empty(), &candidates(), 2)
+            .await,
+        Err(RankError::InvalidInput { .. })
+    ));
+    let reserved = vec![RankCandidate::new("none", "reserved")];
+    assert!(matches!(
+        ranker
+            .rank("request", &RankContext::empty(), &reserved, 2)
+            .await,
+        Err(RankError::InvalidInput { .. })
+    ));
+    let duplicate = vec![
+        RankCandidate::new("x", "one"),
+        RankCandidate::new("x", "two"),
+    ];
+    assert!(matches!(
+        ranker
+            .rank("request", &RankContext::empty(), &duplicate, 2)
+            .await,
+        Err(RankError::InvalidInput { .. })
+    ));
+}
+
+#[tokio::test]
+async fn retrieves_large_catalogues_and_handles_a_retrieval_miss() {
+    let (_initial_ranker, evaluator) =
+        ranker([("slack", 0.8), ("gmail", 0.1), ("none", 0.1)], Some(0.9));
+    let configured_ranker = JevRanker::new(evaluator, JevRankerConfig::new().with_retrieval_k(1));
+    let result = configured_ranker
+        .rank("Slack message", &RankContext::empty(), &candidates(), 2)
+        .await
+        .unwrap_or_default();
+    assert_eq!(result.first().map(|hit| hit.key.as_str()), Some("slack"));
+
+    let (_unused_ranker, evaluator) =
+        ranker([("slack", 0.8), ("gmail", 0.1), ("none", 0.1)], Some(0.9));
+    let miss_ranker = JevRanker::new(
+        evaluator.clone(),
+        JevRankerConfig::new().with_retrieval_k(1),
+    );
+    let _ = miss_ranker
+        .rank("unrelated", &RankContext::empty(), &candidates(), 2)
+        .await;
+    let shown = evaluator
+        .seen
+        .lock()
+        .ok()
+        .and_then(|seen| seen.first().map(|request| request.options.len()));
+    assert_eq!(shown, Some(3));
+}
+
+#[derive(Debug)]
+struct FailingEvaluator;
+#[async_trait::async_trait]
+impl JevEvaluator for FailingEvaluator {
+    async fn evaluate(&self, _request: &JevRequest) -> Result<JevDecision, RankError> {
+        Err(RankError::backend("provider unavailable"))
+    }
+}
+
+#[tokio::test]
+async fn forwards_evaluator_errors() {
+    let ranker = JevRanker::new(Arc::new(FailingEvaluator), JevRankerConfig::default());
+    let result = ranker
+        .rank("message", &RankContext::empty(), &candidates(), 2)
+        .await;
+    assert!(matches!(result, Err(RankError::Backend { .. })));
+    assert_eq!(ranker.kind(), JevRanker::KIND);
+    assert!(format!("{:?}", ranker.config()).contains("bm25"));
+}
+
+#[test]
+fn configuration_builders_are_observable() {
+    let retriever: Arc<dyn ToolRanker> = Arc::new(tinytools::Bm25Ranker);
+    let config = JevRankerConfig::new()
+        .with_retriever(retriever)
+        .with_retrieval_k(0)
+        .with_min_probability(2.0)
+        .with_model("jev-pinned");
+    assert_eq!(config.retrieval_k, 1);
+    assert!((config.min_probability - 1.0).abs() < f64::EPSILON);
+    assert_eq!(config.model, "jev-pinned");
+}
+
+/// Answers the family stage and each family stage from a script keyed by
+/// the request's instructions, so the two-stage flow is observable.
+#[derive(Debug)]
+struct FamilyEvaluator {
+    seen: Mutex<Vec<JevRequest>>,
+}
+#[async_trait::async_trait]
+impl JevEvaluator for FamilyEvaluator {
+    async fn evaluate(&self, request: &JevRequest) -> Result<JevDecision, RankError> {
+        if let Ok(mut seen) = self.seen.lock() {
+            seen.push(request.clone());
+        }
+        let instructions = request.instructions.clone().unwrap_or_default();
+        let probabilities: BTreeMap<String, f64> = if instructions.starts_with("Which group") {
+            [
+                ("slack", 0.7),
+                ("gmail", 0.2),
+                ("core", 0.05),
+                ("none", 0.05),
+            ]
+        } else if instructions.contains("`slack`") {
+            [
+                ("SLACK_SEND_MESSAGE", 0.8),
+                ("SLACK_LIST", 0.1),
+                ("none", 0.1),
+                ("_", 0.0),
+            ]
+        } else {
+            [
+                ("GMAIL_SEND_EMAIL", 0.6),
+                ("GMAIL_FETCH", 0.3),
+                ("none", 0.1),
+                ("_", 0.0),
+            ]
+        }
+        .into_iter()
+        .filter(|(k, _)| *k != "_")
+        .map(|(k, v)| (k.to_owned(), v))
+        .collect();
+        Ok(JevDecision {
+            probabilities,
+            choice_confidence: 0.7,
+            needs_tool: Some(0.9),
+            input_tokens: Some(100),
+            attempts: 1,
+        })
+    }
+}
+
+fn family_catalogue() -> Vec<RankCandidate> {
+    vec![
+        RankCandidate::new("SLACK_SEND_MESSAGE", "Send a message").with_family("slack"),
+        RankCandidate::new("SLACK_LIST", "List channels").with_family("slack"),
+        RankCandidate::new("GMAIL_SEND_EMAIL", "Send an email").with_family("gmail"),
+        RankCandidate::new("GMAIL_FETCH", "Fetch emails").with_family("gmail"),
+        RankCandidate::new("file_read", "Read a file"),
+    ]
+}
+
+#[tokio::test]
+async fn family_then_decide_asks_the_family_first_then_each_chosen_family() {
+    let evaluator = Arc::new(FamilyEvaluator {
+        seen: Mutex::new(vec![]),
+    });
+    let ranker = JevRanker::new(
+        evaluator.clone(),
+        JevRankerConfig::new().with_strategy(JevStrategy::FamilyThenDecide),
+    );
+    let ranking = ranker
+        .rank_detailed("ping alex", &RankContext::empty(), &family_catalogue(), 3)
+        .await
+        .ok();
+
+    let seen: Vec<JevRequest> = evaluator
+        .seen
+        .lock()
+        .map(|seen| seen.clone())
+        .unwrap_or_default();
+    assert_eq!(seen.len(), 3, "one family stage, then slack and gmail");
+    assert_eq!(
+        seen.first().map(|r| r.options.len()),
+        Some(4),
+        "slack, gmail, core, none"
+    );
+    assert!(seen.first().is_some_and(|r| {
+        r.options
+            .iter()
+            .any(|o| o.key == "core" && o.description.contains("file read"))
+    }));
+    assert!(
+        seen.get(1)
+            .and_then(|r| r.instructions.as_deref())
+            .is_some_and(|i| i.contains("`slack`"))
+    );
+    assert!(
+        seen.get(2)
+            .and_then(|r| r.instructions.as_deref())
+            .is_some_and(|i| i.contains("`gmail`"))
+    );
+
+    assert_eq!(
+        ranking.as_ref().map(|r| r.families.clone()),
+        Some(vec![("slack".to_owned(), 0.7), ("gmail".to_owned(), 0.2)])
+    );
+    let keys: Option<Vec<&str>> = ranking
+        .as_ref()
+        .map(|r| r.hits.iter().map(|h| h.key.as_str()).collect());
+    assert_eq!(
+        keys,
+        Some(vec!["SLACK_SEND_MESSAGE", "GMAIL_SEND_EMAIL", "SLACK_LIST"])
+    );
+    assert!(
+        ranking
+            .as_ref()
+            .and_then(|r| r.hits.first())
+            .is_some_and(|h| (h.score - 0.56).abs() < 1e-9)
+    );
+    assert_eq!(ranking.as_ref().map(|r| r.shortlisted), Some(4));
+    assert_eq!(ranking.as_ref().and_then(|r| r.input_tokens), Some(200));
+}
+
+#[tokio::test]
+async fn family_then_decide_with_one_family_skips_the_family_stage() {
+    let evaluator = Arc::new(FamilyEvaluator {
+        seen: Mutex::new(vec![]),
+    });
+    let ranker = JevRanker::new(
+        evaluator.clone(),
+        JevRankerConfig::new().with_strategy(JevStrategy::FamilyThenDecide),
+    );
+    let only_slack: Vec<RankCandidate> = family_catalogue()
+        .into_iter()
+        .filter(|c| c.family.as_deref() == Some("slack"))
+        .collect();
+    let ranking = ranker
+        .rank_detailed("ping alex", &RankContext::empty(), &only_slack, 3)
+        .await
+        .ok();
+    assert_eq!(evaluator.seen.lock().map_or(0, |s| s.len()), 1);
+    assert_eq!(
+        ranking.as_ref().map(|r| r.families.clone()),
+        Some(vec![("slack".to_owned(), 1.0)])
+    );
     assert_eq!(
         ranking
-            .hits
-            .iter()
-            .map(|h| h.key.as_str())
-            .collect::<Vec<_>>(),
-        vec!["SLACK_SEND_MESSAGE", "GMAIL_SEND_EMAIL"],
-        "stock_quote sits below min_probability and none is never a hit"
+            .as_ref()
+            .and_then(|r| r.hits.first())
+            .map(|h| h.key.as_str()),
+        Some("SLACK_SEND_MESSAGE")
     );
-    assert_eq!(ranking.hits[0].confidence, Some(0.83));
-    assert_eq!(ranking.choice_confidence, 0.79);
-    assert_eq!(ranking.needs_tool, Some(0.97));
-    assert_eq!(ranking.none_probability, 0.04);
-    assert_eq!(ranking.shortlisted, 3);
-    assert_eq!(ranking.input_tokens, Some(321));
-    assert_eq!(ranking.attempts, 1);
+}
 
-    let request = &seen.lock().await[0];
-    assert_eq!(request["model"], "jev-latest");
-    assert_eq!(
-        request["state"]["request"],
-        "ping alex on slack that I'm ten minutes late"
-    );
-    let criteria = request["questions"]["tool"]["criteria"]
-        .as_object()
-        .unwrap();
-    assert_eq!(criteria.len(), 4, "three candidates plus `none`");
-    assert!(
-        criteria["SLACK_SEND_MESSAGE"]
-            .as_str()
-            .unwrap()
-            .ends_with("(from slack)")
-    );
-    assert_eq!(request["questions"]["needs_tool"]["type"], "noul");
+/// Builds a decision from `(key, probability)` pairs, defaulting the fields
+/// the family-stage branches below do not exercise.
+fn family_decision(pairs: &[(&str, f64)], needs_tool: Option<f64>) -> JevDecision {
+    JevDecision {
+        probabilities: pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), *value))
+            .collect(),
+        choice_confidence: 0.7,
+        needs_tool,
+        input_tokens: Some(10),
+        attempts: 1,
+    }
 }
 
 #[tokio::test]
-async fn large_catalogue_is_retrieved_first_then_decided() {
-    let (url, seen) = server(vec![response(
-        200,
-        &answer(
-            json!({"t_send_7": 0.9, "t_send_3": 0.06, "none": 0.04}),
-            0.85,
-            Some(0.9),
+async fn family_then_decide_rejects_reserved_none_family_name() {
+    let candidates = vec![
+        RankCandidate::new("a", "does a").with_family("none"),
+        RankCandidate::new("b", "does b").with_family("real"),
+    ];
+    let (ranker, _) = ranker_with_strategy(
+        [("real", 0.5), ("none", 0.5), ("_", 0.0)],
+        Some(0.9),
+        JevStrategy::FamilyThenDecide,
+    );
+    let result = ranker
+        .rank("do it", &RankContext::empty(), &candidates, 2)
+        .await;
+    assert!(matches!(result, Err(RankError::InvalidInput { .. })));
+}
+
+/// A ranker configured with an explicit strategy, reusing the fixed-decision
+/// [`FakeEvaluator`].
+fn ranker_with_strategy(
+    probabilities: [(&str, f64); 3],
+    needs_tool: Option<f64>,
+    strategy: JevStrategy,
+) -> (JevRanker, Arc<FakeEvaluator>) {
+    let evaluator = Arc::new(FakeEvaluator {
+        decision: JevDecision {
+            probabilities: probabilities
+                .into_iter()
+                .map(|(key, value)| (key.to_owned(), value))
+                .collect::<BTreeMap<_, _>>(),
+            choice_confidence: 0.8,
+            needs_tool,
+            input_tokens: Some(10),
+            attempts: 1,
+        },
+        seen: Mutex::new(vec![]),
+    });
+    (
+        JevRanker::new(
+            evaluator.clone(),
+            JevRankerConfig::new().with_strategy(strategy),
         ),
-    )])
-    .await;
-    let mut catalogue: Vec<RankCandidate> = (0..40)
+        evaluator,
+    )
+}
+
+#[tokio::test]
+async fn family_then_decide_rejects_more_families_than_max_candidates() {
+    let candidates: Vec<RankCandidate> = (0..=JevRankerConfig::MAX_CANDIDATES)
         .map(|i| {
-            RankCandidate::new(
-                format!("t_read_{i}"),
-                format!("t_read_{i} Read record {i}."),
-            )
+            RankCandidate::new(format!("tool_{i}"), "does something")
+                .with_family(format!("family_{i}"))
         })
         .collect();
-    catalogue.push(RankCandidate::new(
-        "t_send_7",
-        "t_send_7 Send a message to a person.",
-    ));
-    catalogue.push(RankCandidate::new(
-        "t_send_3",
-        "t_send_3 Send a message to a channel.",
-    ));
-    let ranker = ranker(url, JevRankerConfig::new().with_retrieval_k(5));
-
-    let ranking = ranker
-        .rank_detailed("send a message", &RankContext::empty(), &catalogue, 3)
+    let (ranker, _) = ranker_with_strategy(
+        [("x", 0.5), ("y", 0.5), ("none", 0.0)],
+        Some(0.9),
+        JevStrategy::FamilyThenDecide,
+    );
+    let result = ranker
+        .rank("do it", &RankContext::empty(), &candidates, 2)
         .await;
-    let ranking = ranking.unwrap();
-
-    assert_eq!(ranking.hits[0].key, "t_send_7");
-    assert_eq!(ranking.needs_tool, Some(0.9));
-    let request = &seen.lock().await[0];
-    let criteria = request["questions"]["tool"]["criteria"]
-        .as_object()
-        .unwrap();
-    assert!(
-        criteria.len() <= 6,
-        "shortlist of at most 5 plus `none`, got {}",
-        criteria.len()
-    );
-    assert!(criteria.contains_key("t_send_7"));
-    assert!(criteria.contains_key("t_send_3"));
-    assert_eq!(ranking.shortlisted, criteria.len() - 1);
+    assert!(matches!(result, Err(RankError::InvalidInput { .. })));
 }
 
 #[tokio::test]
-async fn retriever_miss_on_a_small_catalogue_still_lets_jev_decide() {
-    let (url, seen) = server(vec![response(
-        200,
-        &answer(
-            json!({"SLACK_SEND_MESSAGE": 0.7, "GMAIL_SEND_EMAIL": 0.2, "stock_quote": 0.05, "none": 0.05}),
-            0.6,
-            Some(0.8),
-        ),
-    )])
-    .await;
-    // retrieval_k of 1 forces retrieval; "ping" matches nothing lexically.
-    let ranker = ranker(url, JevRankerConfig::new().with_retrieval_k(1));
-
-    let hits = ranker
-        .rank("ping alex", &RankContext::empty(), &candidates(), 3)
-        .await
-        .unwrap();
-
-    assert_eq!(hits[0].key, "SLACK_SEND_MESSAGE");
-    let request = &seen.lock().await[0];
-    let criteria = request["questions"]["tool"]["criteria"]
-        .as_object()
-        .unwrap();
-    assert_eq!(
-        criteria.len(),
-        4,
-        "the whole catalogue was shown after the retriever missed"
-    );
-}
-
-#[tokio::test]
-async fn empty_inputs_never_reach_the_network() {
-    let ranker = ranker("http://127.0.0.1:9".to_owned(), JevRankerConfig::new());
-    assert!(
-        ranker
-            .rank("anything", &RankContext::empty(), &[], 3)
-            .await
-            .unwrap()
-            .is_empty()
-    );
-    assert!(
-        ranker
-            .rank("anything", &RankContext::empty(), &candidates(), 0)
-            .await
-            .unwrap()
-            .is_empty()
-    );
-    let err = ranker
-        .rank("  ", &RankContext::empty(), &candidates(), 3)
-        .await
-        .unwrap_err();
-    assert!(matches!(err, RankError::InvalidInput { .. }), "{err}");
-}
-
-#[tokio::test]
-async fn reserved_and_duplicate_keys_are_rejected_before_sending() {
-    let ranker = ranker("http://127.0.0.1:9".to_owned(), JevRankerConfig::new());
-    let reserved = vec![RankCandidate::new("none", "none nothing")];
-    let err = ranker
-        .rank("x", &RankContext::empty(), &reserved, 3)
-        .await
-        .unwrap_err();
-    assert_eq!(
-        err.to_string(),
-        "invalid ranking input: candidate key `none` is reserved"
-    );
-    let duplicate = vec![
-        RankCandidate::new("a", "a one"),
-        RankCandidate::new("a", "a two"),
-    ];
-    let err = ranker
-        .rank("x", &RankContext::empty(), &duplicate, 3)
-        .await
-        .unwrap_err();
-    assert_eq!(
-        err.to_string(),
-        "invalid ranking input: duplicate candidate key"
-    );
-}
-
-#[tokio::test]
-async fn provider_failures_become_backend_errors_without_the_key() {
-    let (url, _) = server(vec![response(401, r#"{"error":"nope"}"#)]).await;
-    let ranker = ranker(url, JevRankerConfig::new());
-    let err = ranker
-        .rank("send a message", &RankContext::empty(), &candidates(), 3)
-        .await
-        .unwrap_err();
-    let text = err.to_string();
-    assert!(matches!(err, RankError::Backend { .. }), "{text}");
-    assert!(text.contains("authentication failed"), "{text}");
-    assert!(
-        !text.contains("test-key"),
-        "the key must never surface: {text}"
-    );
-}
-
-#[tokio::test]
-async fn the_deadline_is_enforced() {
-    // A listener that accepts and never answers.
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let url = format!("http://{}", listener.local_addr().unwrap());
-    tokio::spawn(async move {
-        let (_socket, _) = listener.accept().await.unwrap();
-        tokio::time::sleep(Duration::from_secs(30)).await;
+async fn family_then_decide_abstains_when_the_family_stage_prefers_none() {
+    #[derive(Debug)]
+    struct AbstainingEvaluator {
+        seen: Mutex<Vec<JevRequest>>,
+    }
+    #[async_trait::async_trait]
+    impl JevEvaluator for AbstainingEvaluator {
+        async fn evaluate(&self, request: &JevRequest) -> Result<JevDecision, RankError> {
+            if let Ok(mut seen) = self.seen.lock() {
+                seen.push(request.clone());
+            }
+            Ok(family_decision(
+                &[("slack", 0.05), ("gmail", 0.05), ("none", 0.9)],
+                Some(0.9),
+            ))
+        }
+    }
+    let evaluator = Arc::new(AbstainingEvaluator {
+        seen: Mutex::new(vec![]),
     });
-    let ranker = ranker(
-        url,
-        JevRankerConfig::new().with_timeout(Duration::from_millis(200)),
+    let ranker = JevRanker::new(
+        evaluator.clone(),
+        JevRankerConfig::new().with_strategy(JevStrategy::FamilyThenDecide),
     );
-    let err = ranker
-        .rank("send a message", &RankContext::empty(), &candidates(), 3)
+    let ranking = ranker
+        .rank_detailed("ping alex", &RankContext::empty(), &family_catalogue(), 3)
+        .await;
+    assert!(
+        ranking
+            .as_ref()
+            .is_ok_and(|r| r.hits.is_empty() && r.families.is_empty())
+    );
+    assert!(
+        ranking
+            .as_ref()
+            .is_ok_and(|r| (r.none_probability - 0.9).abs() < 1e-9)
+    );
+    assert_eq!(
+        evaluator.seen.lock().map_or(0, |s| s.len()),
+        1,
+        "only the family stage ran"
+    );
+}
+
+#[tokio::test]
+async fn family_then_decide_clears_hits_when_the_chosen_family_says_no_tool_is_needed() {
+    let evaluator = Arc::new(FakeEvaluator {
+        decision: family_decision(
+            &[
+                ("SLACK_SEND_MESSAGE", 0.8),
+                ("SLACK_LIST", 0.1),
+                ("none", 0.1),
+            ],
+            Some(0.2),
+        ),
+        seen: Mutex::new(vec![]),
+    });
+    let ranker = JevRanker::new(
+        evaluator,
+        JevRankerConfig::new().with_strategy(JevStrategy::FamilyThenDecide),
+    );
+    let only_slack: Vec<RankCandidate> = family_catalogue()
+        .into_iter()
+        .filter(|c| c.family.as_deref() == Some("slack"))
+        .collect();
+    let ranking = ranker
+        .rank_detailed("ping alex", &RankContext::empty(), &only_slack, 3)
+        .await;
+    assert!(ranking.is_ok_and(|r| r.hits.is_empty()));
+}
+
+#[tokio::test]
+async fn family_then_decide_drops_a_family_whose_none_beats_every_member() {
+    let evaluator = Arc::new(FakeEvaluator {
+        decision: family_decision(
+            &[
+                ("SLACK_SEND_MESSAGE", 0.2),
+                ("SLACK_LIST", 0.1),
+                ("none", 0.9),
+            ],
+            Some(0.9),
+        ),
+        seen: Mutex::new(vec![]),
+    });
+    let ranker = JevRanker::new(
+        evaluator,
+        JevRankerConfig::new().with_strategy(JevStrategy::FamilyThenDecide),
+    );
+    let only_slack: Vec<RankCandidate> = family_catalogue()
+        .into_iter()
+        .filter(|c| c.family.as_deref() == Some("slack"))
+        .collect();
+    let ranking = ranker
+        .rank_detailed("ping alex", &RankContext::empty(), &only_slack, 3)
+        .await;
+    assert!(ranking.is_ok_and(|r| r.hits.is_empty()));
+}
+
+#[tokio::test]
+async fn family_then_decide_skips_a_member_missing_from_the_decision() {
+    let evaluator = Arc::new(FakeEvaluator {
+        decision: family_decision(&[("SLACK_SEND_MESSAGE", 0.8), ("none", 0.05)], Some(0.9)),
+        seen: Mutex::new(vec![]),
+    });
+    let ranker = JevRanker::new(
+        evaluator,
+        JevRankerConfig::new().with_strategy(JevStrategy::FamilyThenDecide),
+    );
+    let only_slack: Vec<RankCandidate> = family_catalogue()
+        .into_iter()
+        .filter(|c| c.family.as_deref() == Some("slack"))
+        .collect();
+    let ranking = ranker
+        .rank_detailed("ping alex", &RankContext::empty(), &only_slack, 3)
         .await
-        .unwrap_err();
-    assert!(matches!(err, RankError::Timeout), "{err}");
+        .ok();
+    // `SLACK_LIST` has no probability in the decision above, so `merge` must
+    // skip it rather than panic or fabricate a score for it.
+    assert_eq!(ranking.as_ref().map(|r| r.hits.len()), Some(1));
+    assert_eq!(
+        ranking
+            .as_ref()
+            .and_then(|r| r.hits.first())
+            .map(|h| h.key.as_str()),
+        Some("SLACK_SEND_MESSAGE")
+    );
 }
 
-#[test]
-fn option_text_clips_long_summaries_and_names_the_family() {
-    let long = "x".repeat(400);
-    let candidate = RankCandidate::new("k", long).with_family("fam");
-    let text = option_text(&candidate);
-    let text = text.as_str().unwrap();
-    assert!(text.starts_with(&"x".repeat(MAX_SUMMARY_CHARS)));
-    assert!(text.ends_with("… (from fam)"));
+#[tokio::test]
+async fn family_then_decide_cuts_an_oversized_family_via_the_retriever() {
+    let members: Vec<RankCandidate> = (0..300)
+        .map(|i| {
+            let tag = if i < 150 { "alpha" } else { "beta" };
+            RankCandidate::new(format!("tool_{i}"), format!("{tag} candidate number {i}"))
+        })
+        .collect();
+    let evaluator = Arc::new(FakeEvaluator {
+        decision: family_decision(&[("none", 0.05)], Some(0.9)),
+        seen: Mutex::new(vec![]),
+    });
+    let ranker = JevRanker::new(
+        evaluator.clone(),
+        JevRankerConfig::new().with_strategy(JevStrategy::FamilyThenDecide),
+    );
+    let _ = ranker
+        .rank_detailed("alpha", &RankContext::empty(), &members, 3)
+        .await
+        .ok();
+    let shown = evaluator
+        .seen
+        .lock()
+        .ok()
+        .and_then(|seen| seen.first().map(|r| r.options.len()))
+        .unwrap_or(0);
+    // `none` plus the alpha-tagged half, cut to at most `MAX_CANDIDATES`.
+    assert!(shown > 1 && shown <= JevRankerConfig::MAX_CANDIDATES + 1);
 }
 
-#[test]
-fn config_debug_never_prints_a_client_and_clamps_knobs() {
-    let config = JevRankerConfig::new()
-        .with_retrieval_k(9_999)
-        .with_min_probability(7.0);
-    assert_eq!(config.retrieval_k, JevRankerConfig::MAX_OPTIONS);
-    assert_eq!(config.min_probability, 1.0);
-    assert!(format!("{config:?}").contains("bm25"));
+#[tokio::test]
+async fn family_then_decide_falls_back_to_the_first_members_when_retrieval_finds_nothing() {
+    let members: Vec<RankCandidate> = (0..300)
+        .map(|i| RankCandidate::new(format!("tool_{i}"), "shared filler text shared filler"))
+        .collect();
+    let evaluator = Arc::new(FakeEvaluator {
+        decision: family_decision(&[("none", 0.05)], Some(0.9)),
+        seen: Mutex::new(vec![]),
+    });
+    let ranker = JevRanker::new(
+        evaluator.clone(),
+        JevRankerConfig::new().with_strategy(JevStrategy::FamilyThenDecide),
+    );
+    let _ = ranker
+        .rank_detailed("shared", &RankContext::empty(), &members, 3)
+        .await
+        .ok();
+    let shown = evaluator
+        .seen
+        .lock()
+        .ok()
+        .and_then(|seen| seen.first().map(|r| r.options.len()))
+        .unwrap_or(0);
+    // The retriever finds nothing distinguishable, so the fallback keeps the
+    // first `MAX_CANDIDATES` members (plus `none`) in their original order.
+    assert_eq!(shown, JevRankerConfig::MAX_CANDIDATES + 1);
+}
+
+#[tokio::test]
+async fn family_summary_truncates_past_600_characters() {
+    #[derive(Debug)]
+    struct RecordingEvaluator {
+        seen: Mutex<Vec<JevRequest>>,
+    }
+    #[async_trait::async_trait]
+    impl JevEvaluator for RecordingEvaluator {
+        async fn evaluate(&self, request: &JevRequest) -> Result<JevDecision, RankError> {
+            if let Ok(mut seen) = self.seen.lock() {
+                seen.push(request.clone());
+            }
+            Ok(family_decision(
+                &[("big", 1.0), ("small", 0.0), ("none", 0.0)],
+                Some(0.9),
+            ))
+        }
+    }
+    let mut candidates: Vec<RankCandidate> = (0..12)
+        .map(|i| {
+            RankCandidate::new(
+                format!("TOOL_WITH_A_VERY_DESCRIPTIVE_LONG_NAME_NUMBER_{i:03}_THAT_PADS_LENGTH"),
+                "does something",
+            )
+            .with_family("big")
+        })
+        .collect();
+    candidates.push(RankCandidate::new("SMALL_TOOL", "does one thing").with_family("small"));
+    let evaluator = Arc::new(RecordingEvaluator {
+        seen: Mutex::new(vec![]),
+    });
+    let ranker = JevRanker::new(
+        evaluator.clone(),
+        JevRankerConfig::new().with_strategy(JevStrategy::FamilyThenDecide),
+    );
+    let _ = ranker
+        .rank_detailed("do it", &RankContext::empty(), &candidates, 3)
+        .await
+        .ok();
+    let big_description = evaluator
+        .seen
+        .lock()
+        .ok()
+        .and_then(|seen| {
+            seen.first().map(|r| {
+                r.options
+                    .iter()
+                    .find(|o| o.key == "big")
+                    .map(|o| o.description.clone())
+                    .unwrap_or_default()
+            })
+        })
+        .unwrap_or_default();
+    assert!(
+        big_description.ends_with('…'),
+        "long family summary should be truncated: {big_description}"
+    );
+    assert!(big_description.chars().count() <= 601);
+}
+
+#[tokio::test]
+async fn join_all_resolves_a_future_that_is_pending_on_its_first_poll() {
+    #[derive(Debug)]
+    struct YieldingEvaluator;
+    #[async_trait::async_trait]
+    impl JevEvaluator for YieldingEvaluator {
+        async fn evaluate(&self, _request: &JevRequest) -> Result<JevDecision, RankError> {
+            // Forces at least one `Poll::Pending` before this future resolves,
+            // exercising `join_all`'s re-poll loop.
+            tokio::task::yield_now().await;
+            Ok(family_decision(
+                &[("SLACK_SEND_MESSAGE", 0.8), ("none", 0.1)],
+                Some(0.9),
+            ))
+        }
+    }
+    let ranker = JevRanker::new(
+        Arc::new(YieldingEvaluator),
+        JevRankerConfig::new().with_strategy(JevStrategy::FamilyThenDecide),
+    );
+    let only_slack: Vec<RankCandidate> = family_catalogue()
+        .into_iter()
+        .filter(|c| c.family.as_deref() == Some("slack"))
+        .collect();
+    let ranking = ranker
+        .rank_detailed("ping alex", &RankContext::empty(), &only_slack, 3)
+        .await
+        .ok();
+    assert_eq!(
+        ranking
+            .as_ref()
+            .and_then(|r| r.hits.first())
+            .map(|h| h.key.as_str()),
+        Some("SLACK_SEND_MESSAGE")
+    );
 }

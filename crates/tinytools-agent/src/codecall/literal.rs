@@ -10,6 +10,8 @@ use serde_json::{Map, Number, Value};
 
 use super::types::{Literal, Refuse};
 
+const MAX_LITERAL_DEPTH: usize = 64;
+
 /// A position in the source text, with the small vocabulary of lookahead
 /// the grammar needs.
 #[derive(Debug)]
@@ -139,14 +141,21 @@ impl<'a> Cursor<'a> {
     /// [`Refuse`] when no literal starts here or the one that does is
     /// unterminated.
     pub(crate) fn literal(&mut self) -> Result<Literal, Refuse> {
+        self.literal_at_depth(0)
+    }
+
+    fn literal_at_depth(&mut self, depth: usize) -> Result<Literal, Refuse> {
+        if depth > MAX_LITERAL_DEPTH {
+            return Err(Refuse);
+        }
         self.skip_trivia();
         match self.peek().ok_or(Refuse)? {
             '"' | '\'' | '`' => self.string(false).map(Literal::Str),
-            '[' => self.sequence('[', ']').map(Literal::List),
-            '(' => self.sequence('(', ')').map(Literal::List),
-            '{' => self.dict().map(Literal::Dict),
+            '[' => self.sequence('[', ']', depth).map(Literal::List),
+            '(' => self.sequence('(', ')', depth).map(Literal::List),
+            '{' => self.dict(depth).map(Literal::Dict),
             c if c == '-' || c == '+' || c.is_ascii_digit() => self.number(),
-            c if c.is_alphabetic() || c == '_' => self.word(),
+            c if c.is_alphabetic() || c == '_' || c == '$' => self.word(),
             _ => Err(Refuse),
         }
     }
@@ -164,7 +173,13 @@ impl<'a> Cursor<'a> {
                 if matches!(self.peek(), Some('"' | '\'')) =>
             {
                 let raw = word.contains(['r', 'R']);
-                self.string(raw).map(Literal::Str)
+                let formatted = word.contains('f');
+                let value = self.string(raw)?;
+                if formatted && value.contains(['{', '}']) {
+                    self.pos = start;
+                    return Err(Refuse);
+                }
+                Ok(Literal::Str(value))
             }
             _ => {
                 self.pos = start;
@@ -252,36 +267,52 @@ impl<'a> Cursor<'a> {
     /// sign. Integers that overflow `i64` become floats.
     fn number(&mut self) -> Result<Literal, Refuse> {
         let rest = self.rest();
-        let mut end = 0;
+        let bytes = rest.as_bytes();
+        let mut end = usize::from(matches!(bytes.first(), Some(b'+' | b'-')));
+        let integer_start = end;
+        consume_digits(bytes, &mut end)?;
+        if bytes.get(integer_start) == Some(&b'0')
+            && bytes.get(integer_start + 1).is_some_and(u8::is_ascii_digit)
+        {
+            return Err(Refuse);
+        }
         let mut is_float = false;
-        for (idx, c) in rest.char_indices() {
-            let ok = match c {
-                '0'..='9' | '_' => true,
-                '+' | '-' => idx == 0 || matches!(rest[..idx].chars().last(), Some('e' | 'E')),
-                '.' | 'e' | 'E' => {
-                    is_float = true;
-                    true
-                }
-                _ => false,
-            };
-            if !ok {
-                break;
+        if bytes.get(end) == Some(&b'.') {
+            is_float = true;
+            end += 1;
+            if bytes.get(end).is_some_and(u8::is_ascii_digit) {
+                consume_digits(bytes, &mut end)?;
             }
-            end = idx + c.len_utf8();
+        }
+        if matches!(bytes.get(end), Some(b'e' | b'E')) {
+            is_float = true;
+            end += 1;
+            if matches!(bytes.get(end), Some(b'+' | b'-')) {
+                end += 1;
+            }
+            consume_digits(bytes, &mut end)?;
+        }
+        if bytes
+            .get(end)
+            .is_some_and(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.'))
+        {
+            return Err(Refuse);
         }
         let text: String = rest[..end].chars().filter(|c| *c != '_').collect();
-        if text.is_empty() || text == "-" || text == "+" {
+        if !is_float && let Ok(n) = text.parse::<i64>() {
+            self.pos += end;
+            return Ok(Literal::Int(n));
+        }
+        let value = text.parse::<f64>().map_err(|_| Refuse)?;
+        if !value.is_finite() {
             return Err(Refuse);
         }
         self.pos += end;
-        if !is_float && let Ok(n) = text.parse::<i64>() {
-            return Ok(Literal::Int(n));
-        }
-        text.parse::<f64>().map(Literal::Float).map_err(|_| Refuse)
+        Ok(Literal::Float(value))
     }
 
     /// A bracketed, comma-separated sequence with an optional trailing comma.
-    fn sequence(&mut self, open: char, close: char) -> Result<Vec<Literal>, Refuse> {
+    fn sequence(&mut self, open: char, close: char, depth: usize) -> Result<Vec<Literal>, Refuse> {
         if self.bump() != Some(open) {
             return Err(Refuse);
         }
@@ -292,7 +323,7 @@ impl<'a> Cursor<'a> {
                 self.bump();
                 return Ok(items);
             }
-            items.push(self.literal()?);
+            items.push(self.literal_at_depth(depth + 1)?);
             self.skip_trivia();
             match self.bump() {
                 Some(',') => {}
@@ -303,7 +334,7 @@ impl<'a> Cursor<'a> {
     }
 
     /// `{key: value, …}` with quoted-string or bare-identifier keys.
-    fn dict(&mut self) -> Result<Vec<(String, Literal)>, Refuse> {
+    fn dict(&mut self, depth: usize) -> Result<Vec<(String, Literal)>, Refuse> {
         if self.bump() != Some('{') {
             return Err(Refuse);
         }
@@ -322,7 +353,7 @@ impl<'a> Cursor<'a> {
             if self.bump() != Some(':') {
                 return Err(Refuse);
             }
-            let value = self.literal()?;
+            let value = self.literal_at_depth(depth + 1)?;
             entries.push((key, value));
             self.skip_trivia();
             match self.bump() {
@@ -332,6 +363,29 @@ impl<'a> Cursor<'a> {
             }
         }
     }
+}
+
+fn consume_digits(bytes: &[u8], end: &mut usize) -> Result<(), Refuse> {
+    let start = *end;
+    let mut previous_was_digit = false;
+    while let Some(byte) = bytes.get(*end) {
+        if byte.is_ascii_digit() {
+            previous_was_digit = true;
+            *end += 1;
+        } else if *byte == b'_'
+            && previous_was_digit
+            && bytes.get(*end + 1).is_some_and(u8::is_ascii_digit)
+        {
+            previous_was_digit = false;
+            *end += 1;
+        } else {
+            break;
+        }
+    }
+    if *end == start || !previous_was_digit {
+        return Err(Refuse);
+    }
+    Ok(())
 }
 
 impl From<Literal> for Value {

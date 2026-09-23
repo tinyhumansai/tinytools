@@ -9,7 +9,13 @@
 //!   templates);
 //! * sentinel pipes leaked into the markers, in any position:
 //!   `<|tool_call>…<tool_call|>`, `<|tool_call|>…<|tool_call|>`,
-//!   `…</tool_call|>`;
+//!   `…</tool_call|>`, including the fullwidth `｜` those templates
+//!   actually emit;
+//! * a `DeepSeek` DSML marker on the tag itself,
+//!   `<｜DSML｜tool_call>…</｜DSML｜tool_call>` — the same marker
+//!   [`super::invoke_xml`] already accepts on `<invoke>`, which this family
+//!   used to miss, so a `deepseek` turn that chose the tag form over the
+//!   invoke form parsed as prose and the call was silently dropped;
 //! * a `call:` prefix before the body;
 //! * a fenced block instead of a tag, ```` ```tool_call … ``` ````, sometimes
 //!   closed by a stray `</tool_call>`;
@@ -29,7 +35,7 @@ use regex::Regex;
 use super::{Block, Decoded, Grammar, Probe, ScanMode, find_ci, pending_opener, prefer_pending};
 use crate::parse::call_object::{AliasPolicy, read_calls};
 use crate::parse::json_values::{
-    extract_first_json_value_with_end, extract_json_values, find_json_end, strip_leading_close_tags,
+    extract_first_json_value_with_end, extract_json_values, find_json_end,
 };
 use crate::repair::json::{recover_object, strip_code_fence};
 use crate::types::{CallSource, ParseOptions, ParsedToolCall};
@@ -39,11 +45,17 @@ use crate::types::{CallSource, ParseOptions, ParsedToolCall};
 pub(crate) struct Tagged;
 
 /// Any tag-family marker: `<tool_call>`, `<toolcall>`, `<tool-call>`, with
-/// pipes, a slash, or whitespace leaked in, and an optional attribute list.
-/// `<tool_calls>` (plural, a JSON key) and `<tool_callable>` do not match:
-/// the name must end at a pipe, slash, whitespace, or `>`.
-static TAG_RE: LazyLock<Option<Regex>> =
-    LazyLock::new(|| Regex::new(r"(?i)<[|/\s]*tool[_-]?call(?:[|/\s]*|\s+[^>]*)>").ok());
+/// pipes (ASCII `|` or the fullwidth `｜` chat templates emit), a slash,
+/// whitespace, or a `DeepSeek` DSML marker leaked in, and an optional
+/// attribute list. `<tool_calls>` (plural, a JSON key, and the DSML wrapper
+/// element) and `<tool_callable>` do not match: the name must end at a pipe,
+/// slash, whitespace, or `>`.
+static TAG_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)<[|\u{ff5c}/\s]*(?:DSML[|\u{ff5c}/\s]*)?tool[_-]?call(?:[|\u{ff5c}/\s]*|\s+[^>]*)>",
+    )
+    .ok()
+});
 
 /// Openers a fenced block can carry. `` ```tool_calls `` (plural) is listed
 /// separately from `` ```tool_call `` rather than relying on a prefix match:
@@ -117,20 +129,64 @@ impl Tagged {
         let Some(opener) = next_opener(text, from) else {
             return Probe::None;
         };
-        let after = &text[opener.body_start..];
+        let mut body_start = opener.body_start;
 
+        // How many extra openers a doubled block skipped, so the matching
+        // number of extra closers — never an unrelated closing tag such as
+        // `</div>` — can be swallowed below. `DeepSeek` V4 doubles both the
+        // opener and the closer under a code dialect:
+        // `<tool_call>\n<tool_call>\nNAME(...)\n</tool_call>\n</tool_call>`.
+        let mut skipped = 0usize;
         let close = match opener.kind {
-            OpenerKind::Tag => TAG_RE
-                .as_ref()
-                .and_then(|re| re.find(after))
-                .map(|m| (m.start(), m.end())),
-            OpenerKind::Invoke => after.find("</invoke>").map(|i| (i, i + "</invoke>".len())),
-            OpenerKind::Fence => fence_close(after),
+            OpenerKind::Tag => {
+                // Positional pairing means a doubled opener would otherwise
+                // close the first tag on an empty body and lose the call. An
+                // opener followed by nothing but whitespace is the same
+                // block starting again, so the scan moves past it.
+                let re = TAG_RE.as_ref();
+                loop {
+                    let after = &text[body_start..];
+                    let Some(m) = re.and_then(|re| re.find(after)) else {
+                        break None;
+                    };
+                    let is_opener = !is_closing_marker(m.as_str());
+                    if is_opener && after[..m.start()].trim().is_empty() {
+                        body_start += m.end();
+                        skipped += 1;
+                        continue;
+                    }
+                    break Some((m.start(), m.end()));
+                }
+            }
+            OpenerKind::Invoke => {
+                let after = &text[body_start..];
+                after.find("</invoke>").map(|i| (i, i + "</invoke>".len()))
+            }
+            OpenerKind::Fence => fence_close(&text[body_start..]),
         };
+        let after = &text[body_start..];
 
         if let Some((body_end, close_end)) = close {
             let body = &after[..body_end];
-            let end = opener.body_start + close_end;
+            let rest = &after[close_end..];
+            // Swallow only the closers a doubled opener left behind — never
+            // an unrelated closing tag such as `</div>` — so no stray
+            // `</tool_call>` survives into the visible text while narrative
+            // markup after a normal call is left untouched.
+            let end = if opener.kind == OpenerKind::Tag && skipped > 0 {
+                match swallow_extra_closers(rest, skipped, mode) {
+                    Some(consumed) => body_start + close_end + consumed,
+                    // Streaming: more input could still bring the matching
+                    // closer, so the block is not safe to finalize yet.
+                    None => {
+                        return Probe::Pending {
+                            start: opener.start,
+                        };
+                    }
+                }
+            } else {
+                body_start + close_end
+            };
             let calls = decode_body(body, options);
             let decoded = if calls.is_empty() {
                 Decoded::Malformed {
@@ -152,6 +208,18 @@ impl Tagged {
             };
         }
 
+        // Batch: an opener with nothing after it is a call the model started
+        // and never wrote (a truncated or abandoned block). There is nothing
+        // to recover and nothing worth showing, so it is dropped rather than
+        // left in the visible text as a bare `<tool_call>`.
+        if opener.kind == OpenerKind::Tag && after.trim().is_empty() {
+            return Probe::Found(Block {
+                start: opener.start,
+                end: text.len(),
+                decoded: Decoded::Malformed { body_chars: 0 },
+            });
+        }
+
         // Batch: no closer. Recover a balanced JSON body if one starts here.
         let recovered = find_json_end(after)
             .and_then(|json_end| {
@@ -168,9 +236,12 @@ impl Tagged {
                 CallSource::TaggedJson,
             );
             if !calls.is_empty() {
-                let rest = &after[consumed..];
-                let stripped = strip_leading_close_tags(rest);
-                let end = text.len() - stripped.len();
+                // No tag-family marker exists anywhere after this opener (the
+                // TAG_RE scan above found none), so nothing here is protocol
+                // furniture to clean up — stopping at the JSON boundary
+                // leaves any trailing markup, tool-call-related or not, in
+                // the narrative rather than guessing which closer it was.
+                let end = body_start + consumed;
                 return Probe::Found(Block {
                     start: opener.start,
                     end,
@@ -186,6 +257,78 @@ impl Tagged {
     }
 }
 
+/// Whether a tag-family marker is a closer (`</tool_call>`, `<|/tool_call|>`).
+/// Skips the same whitespace class `TAG_RE`'s `\s` does (not just space and
+/// tab), so a marker like `<\n/tool_call>` — which the regex matches as one
+/// marker — is still recognized as a closer here.
+fn is_closing_marker(marker: &str) -> bool {
+    marker[1..]
+        .trim_start_matches(|c: char| c == '|' || c.is_whitespace())
+        .starts_with('/')
+}
+
+/// Canonical closer spellings [`swallow_extra_closers`] holds a partial
+/// match of in stream mode. Not exhaustive of everything `TAG_RE` accepts
+/// (arbitrary interleaved pipes and whitespace) — the same practical
+/// trade-off [`pending_opener`]'s literal list already makes for openers.
+const CLOSER_PREFIXES: &[&str] = &["</tool_call", "</toolcall", "</tool-call", "<|/tool_call"];
+
+/// Whether `trimmed` — which `TAG_RE` did not match as a complete marker —
+/// could still grow into a tag-family closer once more input arrives: it has
+/// no `>` yet and is a case-insensitive prefix of one of [`CLOSER_PREFIXES`].
+fn could_still_become_a_closer(trimmed: &str) -> bool {
+    if trimmed.contains('>') {
+        return false;
+    }
+    CLOSER_PREFIXES.iter().any(|literal| {
+        let n = trimmed.len().min(literal.len());
+        trimmed.is_char_boundary(n) && trimmed[..n].eq_ignore_ascii_case(&literal[..n])
+    })
+}
+
+/// Swallows up to `max` tag-family closers from the front of `rest`
+/// (whitespace between them ignored), returning the byte count consumed.
+/// Only a recognized closer — matched by [`TAG_RE`], the same grammar as
+/// every opener — is ever eaten, so unrelated markup such as `</div>` is
+/// left for the narrative. In [`ScanMode::Stream`], `None` means the text
+/// ends, or breaks off mid-marker, before it is clear whether another closer
+/// is still coming, so the caller must hold the block back rather than
+/// finalize it early and let a partial marker such as `</tool_` leak out as
+/// text before its `call>` tail arrives in a later fragment.
+fn swallow_extra_closers(rest: &str, max: usize, mode: ScanMode) -> Option<usize> {
+    let re = TAG_RE.as_ref()?;
+    let mut consumed = 0usize;
+    for _ in 0..max {
+        let after = &rest[consumed..];
+        let trimmed = after.trim_start();
+        let skipped_ws = after.len() - trimmed.len();
+        if trimmed.is_empty() {
+            // Nothing here yet: in batch mode that is simply the end of the
+            // response, in stream mode a closer could still be on its way.
+            return if mode == ScanMode::Stream {
+                None
+            } else {
+                Some(consumed)
+            };
+        }
+        let Some(m) = re.find(trimmed) else {
+            return if mode == ScanMode::Stream && could_still_become_a_closer(trimmed) {
+                None
+            } else {
+                Some(consumed)
+            };
+        };
+        if m.start() != 0 {
+            return Some(consumed);
+        }
+        if !is_closing_marker(m.as_str()) {
+            return Some(consumed);
+        }
+        consumed += skipped_ws + m.end();
+    }
+    Some(consumed)
+}
+
 /// The earliest opener at or after `from`: a non-closing tag-family marker,
 /// the bare `<invoke>` literal, or a fence opener.
 fn next_opener(text: &str, from: usize) -> Option<Opener> {
@@ -199,8 +342,7 @@ fn next_opener(text: &str, from: usize) -> Option<Opener> {
     if let Some(re) = TAG_RE.as_ref() {
         for m in re.find_iter(&text[from..]) {
             // A marker with a slash is a closer, never an opener.
-            let inner = &m.as_str()[1..];
-            if inner.trim_start_matches(['|', ' ', '\t']).starts_with('/') {
+            if is_closing_marker(m.as_str()) {
                 continue;
             }
             consider(

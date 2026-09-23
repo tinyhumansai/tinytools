@@ -115,6 +115,24 @@ pub enum RankError {
     Timeout,
 }
 
+impl RankError {
+    /// Creates a backend failure with a log-safe description.
+    #[must_use]
+    pub fn backend(reason: impl Into<String>) -> Self {
+        Self::Backend {
+            reason: reason.into(),
+        }
+    }
+
+    /// Creates an invalid-input failure.
+    #[must_use]
+    pub fn invalid_input(reason: impl Into<String>) -> Self {
+        Self::InvalidInput {
+            reason: reason.into(),
+        }
+    }
+}
+
 impl fmt::Display for RankError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
