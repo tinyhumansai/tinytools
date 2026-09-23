@@ -57,6 +57,110 @@ static TAG_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     .ok()
 });
 
+/// The bare `<invoke>` literal — no attributes — with the optional `DeepSeek`
+/// DSML marker or XML namespace the named form already tolerates
+/// ([`super::invoke_xml`]'s `PREFIX`).
+///
+/// The prefix used to be absent here: the opener was a literal `"<invoke>"`
+/// match and the closer a literal `"</invoke>"`, so `<｜DSML｜ invoke>` — a
+/// `deepseek` turn that emitted the invoke form *without* a `name` attribute,
+/// carrying the name in the JSON body instead — opened no block and the call
+/// was dropped as prose. The named spelling `<｜DSML｜invoke name="x">` parsed
+/// fine, and so did the unprefixed bare `<invoke>`; only the combination of
+/// the two accommodations was missing.
+///
+/// Attributes are excluded on purpose: `<invoke name="x">` belongs to
+/// [`super::invoke_xml`], which reads the name off the tag. This matches only
+/// the attribute-less form, whose name can come from the body.
+static BARE_INVOKE_OPEN_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(r"(?i)<(?:[|\u{ff5c}]{1,2}\s*DSML\s*[|\u{ff5c}]{1,2}\s*|[a-z_][\w.-]*:)?invoke\s*>")
+        .ok()
+});
+
+/// A bare invoke closer with the same permitted prefix shapes as its opener.
+static BARE_INVOKE_CLOSE_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(r"(?i)</(?:[|\u{ff5c}]{1,2}\s*DSML\s*[|\u{ff5c}]{1,2}\s*|[a-z_][\w.-]*:)?invoke\s*>")
+        .ok()
+});
+
+/// A complete named invoke or function opener accepted by `invoke_xml`.
+///
+/// This is used only as a recovery boundary after a complete JSON value. The
+/// tagged grammar must leave that later call for `invoke_xml` to decode.
+static NAMED_INVOKE_OPEN_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?is)<(?:[|\u{ff5c}]{1,2}\s*DSML\s*[|\u{ff5c}]{1,2}\s*|[a-z_][\w.-]*:)?(?:invoke|function)(?:\s+[^>]*?\bname\s*=\s*"[^"]*"[^>]*|\s*=\s*[^\s>,]+[^>]*)>"#,
+    )
+    .ok()
+});
+
+/// First match of `re` in `haystack`, as `(start, end)`.
+fn find_re(re: &LazyLock<Option<Regex>>, haystack: &str) -> Option<(usize, usize)> {
+    re.as_ref()
+        .and_then(|re| re.find(haystack))
+        .map(|m| (m.start(), m.end()))
+}
+
+/// Finds the closer that has the exact prefix and spelling of `opener`.
+///
+/// A bare `<invoke>` must not be closed by `</atem:invoke>` embedded in its
+/// JSON body. When the body begins with valid JSON, skip that whole value too:
+/// a matching-looking closer in a JSON string is data rather than markup.
+fn matching_invoke_close(opener: &str, after: &str) -> Option<(usize, usize)> {
+    let json_end = find_json_end(after)
+        .filter(|&end| serde_json::from_str::<serde_json::Value>(&after[..end]).is_ok());
+    let start = json_end.unwrap_or(0);
+    let opener = normalized_invoke_marker(opener);
+    BARE_INVOKE_CLOSE_RE.as_ref().and_then(|re| {
+        re.find_iter(&after[start..])
+            .find(|close| normalized_invoke_marker(close.as_str()) == opener)
+            .map(|close| (start + close.start(), start + close.end()))
+    })
+}
+
+/// Normalizes an invoke marker enough to compare its semantic prefix.
+fn normalized_invoke_marker(marker: &str) -> String {
+    marker
+        .chars()
+        .filter(|ch| !matches!(ch, '<' | '>' | '/') && !ch.is_whitespace())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// Finds a bare invoke's closer unless a complete named successor comes first.
+fn invoke_close(opener: &str, after: &str) -> Option<(usize, usize)> {
+    let close = matching_invoke_close(opener, after);
+    let successor = named_invoke_boundary(after);
+    if successor.is_some_and(|start| close.is_none_or(|(end, _)| start < end)) {
+        None
+    } else {
+        close
+    }
+}
+
+/// The start of a later block that is safe to parse after an unterminated,
+/// undecodable tagged block.
+///
+/// A successfully decoded leading JSON value is the only reliable delimiter
+/// available without a matching outer tag. It prevents an `<invoke …>` inside
+/// a rejected JSON string from becoming an executable nested call.
+fn recovery_boundary(text: &str, body_start: usize) -> Option<usize> {
+    let after = &text[body_start..];
+    let json_end = find_json_end(after)
+        .filter(|&end| serde_json::from_str::<serde_json::Value>(&after[..end]).is_ok())?;
+    let from = body_start + json_end;
+    let tagged = next_opener(text, from).map(|opener| opener.start);
+    let named = find_re(&NAMED_INVOKE_OPEN_RE, &text[from..]).map(|(start, _)| from + start);
+    [tagged, named].into_iter().flatten().min()
+}
+
+/// The first named invoke after a valid leading JSON value in `text`.
+fn named_invoke_boundary(text: &str) -> Option<usize> {
+    let json_end = find_json_end(text)
+        .filter(|&end| serde_json::from_str::<serde_json::Value>(&text[..end]).is_ok())?;
+    find_re(&NAMED_INVOKE_OPEN_RE, &text[json_end..]).map(|(start, _)| json_end + start)
+}
+
 /// Openers a fenced block can carry. `` ```tool_calls `` (plural) is listed
 /// separately from `` ```tool_call `` rather than relying on a prefix match:
 /// `next_opener` requires the language to end exactly at the literal, so
@@ -160,7 +264,7 @@ impl Tagged {
             }
             OpenerKind::Invoke => {
                 let after = &text[body_start..];
-                after.find("</invoke>").map(|i| (i, i + "</invoke>".len()))
+                invoke_close(&text[opener.start..body_start], after)
             }
             OpenerKind::Fence => fence_close(&text[body_start..]),
         };
@@ -249,9 +353,23 @@ impl Tagged {
                 });
             }
         }
+        // Nothing recoverable in this block. A complete JSON value establishes
+        // a structural boundary after the malformed call. Only then may a
+        // later opener start a new scan: markup inside the JSON value is data,
+        // never a nested call to execute.
+        //
+        // That is not hypothetical. A `deepseek` turn emitted an unterminated
+        // `<tool_call>` whose body carried `{"arguments":{…}}` with no name —
+        // unrecoverable, correctly — immediately followed by a complete
+        // `<｜DSML｜ invoke>` call. Swallowing to end-of-text dropped the good
+        // call with the bad one and the whole response parsed as prose. A
+        // block that failed to decode must not be allowed to bury its
+        // successors.
+        //
+        let end = recovery_boundary(text, body_start).unwrap_or(text.len());
         Probe::Found(Block {
             start: opener.start,
-            end: text.len(),
+            end,
             decoded: Decoded::Verbatim,
         })
     }
@@ -357,12 +475,12 @@ fn next_opener(text: &str, from: usize) -> Option<Opener> {
         }
     }
 
-    if let Some(idx) = find_ci(text, "<invoke>", from) {
+    if let Some((start, end)) = find_re(&BARE_INVOKE_OPEN_RE, &text[from..]) {
         consider(
             &mut best,
             Opener {
-                start: idx,
-                body_start: idx + "<invoke>".len(),
+                start: from + start,
+                body_start: from + end,
                 kind: OpenerKind::Invoke,
             },
         );
@@ -397,7 +515,7 @@ fn next_opener(text: &str, from: usize) -> Option<Opener> {
 }
 
 /// The closer of a fenced block: a closing fence, a stray tag-family closer,
-/// or `</invoke>`, whichever comes first.
+/// or bare invoke closer, whichever comes first.
 fn fence_close(after: &str) -> Option<(usize, usize)> {
     let mut best: Option<(usize, usize)> = None;
     let mut consider = |candidate: Option<(usize, usize)>| {
@@ -419,7 +537,7 @@ fn fence_close(after: &str) -> Option<(usize, usize)> {
             })
             .map(|m| (m.start(), m.end())),
     );
-    consider(after.find("</invoke>").map(|i| (i, i + "</invoke>".len())));
+    consider(find_re(&BARE_INVOKE_CLOSE_RE, after));
     best
 }
 

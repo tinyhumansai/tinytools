@@ -573,3 +573,152 @@ fn the_plural_dsml_wrapper_is_not_a_tag_marker() {
     assert_eq!(calls.len(), 1, "the inner call is the only call: {calls:?}");
     assert_eq!(calls[0].name, "echo");
 }
+
+/// A `DeepSeek` turn may emit the invoke form *without* a `name` attribute and
+/// carry the name in the JSON body instead. The named DSML spelling
+/// (`<｜DSML｜invoke name="x">`) and the bare unprefixed `<invoke>` both parsed
+/// already; only their combination was missed, and the call was dropped as
+/// prose.
+#[test]
+fn a_bare_dsml_invoke_carries_its_name_in_the_body() {
+    let raw = concat!(
+        "<｜DSML｜ invoke>\n",
+        "{\"arguments\": {\"command\": \"ls\"}, \"name\": \"shell\"}",
+        "</｜DSML｜ parameter>\n",
+        "</｜DSML｜ invoke>"
+    );
+    let (_, calls) = crate::parse::parse_tool_calls(raw);
+    assert_eq!(calls.len(), 1, "the bare DSML invoke is a call: {calls:?}");
+    assert_eq!(calls[0].name, "shell");
+
+    // The spellings that already worked must keep working: the prefix is
+    // optional, and an ASCII bar, a doubled bar and a namespace are the same
+    // accommodation `invoke_xml` makes on the named form.
+    for open_close in [
+        ("<invoke>", "</invoke>"),
+        ("<|DSML| invoke>", "</|DSML| invoke>"),
+        ("<｜｜DSML｜｜invoke>", "</｜｜DSML｜｜invoke>"),
+        ("<atem:invoke>", "</atem:invoke>"),
+    ] {
+        let (open, close) = open_close;
+        let raw = format!("{open}{{\"name\":\"echo\",\"arguments\":{{}}}}{close}");
+        let (_, calls) = crate::parse::parse_tool_calls(&raw);
+        assert_eq!(
+            calls.len(),
+            1,
+            "variant {open_close:?} must parse: {calls:?}"
+        );
+        assert_eq!(calls[0].name, "echo");
+    }
+}
+
+/// A block that decodes to nothing must not bury the calls after it.
+///
+/// Verbatim from a `deepseek` turn: an unterminated `<tool_call>` whose body is
+/// `{"arguments":{…}}` with no name — genuinely unrecoverable, since the name
+/// survived only in a corrupted `<｜DSML｜ parameter name="name":"file_write"}`
+/// line and inventing one is never right — followed by a complete
+/// `<｜DSML｜ invoke>`. The failed block used to run to end-of-text and take
+/// the good call with it, so the whole response parsed as prose and both calls
+/// were lost.
+#[test]
+fn an_undecodable_block_does_not_swallow_the_call_after_it() {
+    let raw = concat!(
+        "Heredocs aren't working in this shell. Writing the script to a file instead.\n\n",
+        "<tool_call>\n",
+        "{\"arguments\":{\"path\":\"work/extract.py\",\"content\":\"import re\"}}",
+        "</｜DSML｜ parameter>\n",
+        "<｜DSML｜ parameter name=\"name\":\"file_write\"}</｜DSML｜ parameter>\n",
+        "</｜DSML｜ invoke>\n",
+        "<｜DSML｜ invoke>\n",
+        "{\"arguments\":{\"category\":\"read\",\"command\":\"ls\"},\"name\":\"shell\"}",
+        "</｜DSML｜ parameter>\n",
+        "</｜DSML｜ invoke>\n",
+        "</｜DSML｜ calls>"
+    );
+    let outcome = super::parse_known(raw, &["file_write", "shell"]);
+    assert_eq!(
+        outcome.calls.len(),
+        1,
+        "the well-formed call survives its malformed neighbour: {:?}",
+        outcome.calls
+    );
+    assert_eq!(outcome.calls[0].name, "shell");
+
+    // Reduced to the essential shape, so a future change that reintroduces the
+    // swallow fails here with less noise.
+    let raw = concat!(
+        "<tool_call>\n{\"arguments\":{\"path\":\"x\"}}</｜DSML｜ parameter>\n",
+        "<｜DSML｜ invoke>\n{\"arguments\":{\"command\":\"ls\"},\"name\":\"shell\"}</｜DSML｜ invoke>"
+    );
+    let outcome = super::parse_known(raw, &["file_write", "shell"]);
+    assert_eq!(outcome.calls.len(), 1, "{:?}", outcome.calls);
+    assert_eq!(outcome.calls[0].name, "shell");
+}
+
+#[test]
+fn a_bare_invoke_requires_its_own_closer() {
+    let raw = concat!(
+        "<invoke>{\"name\":\"echo\",\"arguments\":{\"text\":\"literal </atem:invoke> marker\"}}",
+        "</invoke>"
+    );
+    let (_, calls) = parse(raw);
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert_eq!(
+        calls[0].arguments,
+        serde_json::json!({"text": "literal </atem:invoke> marker"})
+    );
+}
+
+#[test]
+fn a_bare_dsml_invoke_allows_equivalent_closer_spacing() {
+    let raw = concat!(
+        "<｜DSML｜ invoke>{\"name\":\"echo\",\"arguments\":{}}",
+        "</｜DSML｜invoke>"
+    );
+    let (text, calls) = parse(raw);
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert!(text.is_empty(), "{text:?}");
+}
+
+#[test]
+fn a_fenced_invoke_block_can_close_with_an_invoke_tag() {
+    let raw = "```invoke\n{\"name\":\"echo\",\"arguments\":{}}</invoke>";
+    let (text, calls) = parse(raw);
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert!(text.is_empty(), "{text:?}");
+}
+
+#[test]
+fn recovery_leaves_a_named_invoke_after_a_complete_malformed_body() {
+    let raw = concat!(
+        "<tool_call>{\"arguments\":{}}",
+        "<atem:invoke name=\"shell\"><parameter name=\"command\">ls</parameter></atem:invoke>"
+    );
+    let outcome = super::parse_known(raw, &["shell"]);
+    assert_eq!(outcome.calls.len(), 1, "{:?}", outcome.calls);
+    assert_eq!(outcome.calls[0].name, "shell");
+}
+
+#[test]
+fn a_named_invoke_precedes_a_later_bare_invoke_closer() {
+    let raw = concat!(
+        "<invoke>{\"name\":\"echo\",\"arguments\":{}}",
+        "<atem:invoke name=\"shell\"><parameter name=\"command\">ls</parameter></atem:invoke>",
+        "</invoke>"
+    );
+    let outcome = super::parse_known(raw, &["echo", "shell"]);
+    assert_eq!(outcome.calls.len(), 2, "{:?}", outcome.calls);
+    assert_eq!(outcome.calls[0].name, "echo");
+    assert_eq!(outcome.calls[1].name, "shell");
+}
+
+#[test]
+fn recovery_does_not_execute_a_named_invoke_inside_malformed_json() {
+    let raw = concat!(
+        "<tool_call>{\"arguments\":{\"example\":\"<invoke name=\\\"shell\\\">",
+        "<parameter name=\\\"command\\\">rm -rf /</parameter></invoke>\"}}"
+    );
+    let (_, calls) = parse(raw);
+    assert!(calls.is_empty(), "{calls:?}");
+}
