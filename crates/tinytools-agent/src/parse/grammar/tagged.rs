@@ -77,6 +77,12 @@ static BARE_INVOKE_OPEN_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
         .ok()
 });
 
+/// A bare invoke closer with the same permitted prefix shapes as its opener.
+static BARE_INVOKE_CLOSE_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(r"(?i)</(?:[|\u{ff5c}]{1,2}\s*DSML\s*[|\u{ff5c}]{1,2}\s*|[a-z_][\w.-]*:)?invoke\s*>")
+        .ok()
+});
+
 /// A complete named invoke or function opener accepted by `invoke_xml`.
 ///
 /// This is used only as a recovery boundary after a complete JSON value. The
@@ -101,11 +107,24 @@ fn find_re(re: &LazyLock<Option<Regex>>, haystack: &str) -> Option<(usize, usize
 /// JSON body. When the body begins with valid JSON, skip that whole value too:
 /// a matching-looking closer in a JSON string is data rather than markup.
 fn matching_invoke_close(opener: &str, after: &str) -> Option<(usize, usize)> {
-    let closer = format!("</{}", &opener[1..]);
     let json_end = find_json_end(after)
         .filter(|&end| serde_json::from_str::<serde_json::Value>(&after[..end]).is_ok());
     let start = json_end.unwrap_or(0);
-    find_ci(after, &closer, start).map(|index| (index, index + closer.len()))
+    let opener = normalized_invoke_marker(opener);
+    BARE_INVOKE_CLOSE_RE.as_ref().and_then(|re| {
+        re.find_iter(&after[start..])
+            .find(|close| normalized_invoke_marker(close.as_str()) == opener)
+            .map(|close| (start + close.start(), start + close.end()))
+    })
+}
+
+/// Normalizes an invoke marker enough to compare its semantic prefix.
+fn normalized_invoke_marker(marker: &str) -> String {
+    marker
+        .chars()
+        .filter(|ch| !matches!(ch, '<' | '>' | '/') && !ch.is_whitespace())
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 /// Finds a bare invoke's closer unless a complete named successor comes first.
@@ -495,8 +514,8 @@ fn next_opener(text: &str, from: usize) -> Option<Opener> {
     best
 }
 
-/// The closer of a fenced block: a closing fence or a stray tag-family closer,
-/// whichever comes first.
+/// The closer of a fenced block: a closing fence, a stray tag-family closer,
+/// or bare invoke closer, whichever comes first.
 fn fence_close(after: &str) -> Option<(usize, usize)> {
     let mut best: Option<(usize, usize)> = None;
     let mut consider = |candidate: Option<(usize, usize)>| {
@@ -518,6 +537,7 @@ fn fence_close(after: &str) -> Option<(usize, usize)> {
             })
             .map(|m| (m.start(), m.end())),
     );
+    consider(find_re(&BARE_INVOKE_CLOSE_RE, after));
     best
 }
 

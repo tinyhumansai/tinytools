@@ -671,6 +671,25 @@ fn a_bare_invoke_requires_its_own_closer() {
 }
 
 #[test]
+fn a_bare_dsml_invoke_allows_equivalent_closer_spacing() {
+    let raw = concat!(
+        "<｜DSML｜ invoke>{\"name\":\"echo\",\"arguments\":{}}",
+        "</｜DSML｜invoke>"
+    );
+    let (text, calls) = parse(raw);
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert!(text.is_empty(), "{text:?}");
+}
+
+#[test]
+fn a_fenced_invoke_block_can_close_with_an_invoke_tag() {
+    let raw = "```invoke\n{\"name\":\"echo\",\"arguments\":{}}</invoke>";
+    let (text, calls) = parse(raw);
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert!(text.is_empty(), "{text:?}");
+}
+
+#[test]
 fn recovery_leaves_a_named_invoke_after_a_complete_malformed_body() {
     let raw = concat!(
         "<tool_call>{\"arguments\":{}}",
