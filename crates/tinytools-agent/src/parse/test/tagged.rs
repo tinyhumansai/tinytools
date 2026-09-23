@@ -682,6 +682,19 @@ fn recovery_leaves_a_named_invoke_after_a_complete_malformed_body() {
 }
 
 #[test]
+fn a_named_invoke_precedes_a_later_bare_invoke_closer() {
+    let raw = concat!(
+        "<invoke>{\"name\":\"echo\",\"arguments\":{}}",
+        "<atem:invoke name=\"shell\"><parameter name=\"command\">ls</parameter></atem:invoke>",
+        "</invoke>"
+    );
+    let outcome = super::parse_known(raw, &["echo", "shell"]);
+    assert_eq!(outcome.calls.len(), 2, "{:?}", outcome.calls);
+    assert_eq!(outcome.calls[0].name, "echo");
+    assert_eq!(outcome.calls[1].name, "shell");
+}
+
+#[test]
 fn recovery_does_not_execute_a_named_invoke_inside_malformed_json() {
     let raw = concat!(
         "<tool_call>{\"arguments\":{\"example\":\"<invoke name=\\\"shell\\\">",

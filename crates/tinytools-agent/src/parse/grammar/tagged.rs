@@ -124,6 +124,13 @@ fn recovery_boundary(text: &str, body_start: usize) -> Option<usize> {
     [tagged, named].into_iter().flatten().min()
 }
 
+/// The first named invoke after a valid leading JSON value in `text`.
+fn named_invoke_boundary(text: &str) -> Option<usize> {
+    let json_end = find_json_end(text)
+        .filter(|&end| serde_json::from_str::<serde_json::Value>(&text[..end]).is_ok())?;
+    find_re(&NAMED_INVOKE_OPEN_RE, &text[json_end..]).map(|(start, _)| json_end + start)
+}
+
 /// Openers a fenced block can carry. `` ```tool_calls `` (plural) is listed
 /// separately from `` ```tool_call `` rather than relying on a prefix match:
 /// `next_opener` requires the language to end exactly at the literal, so
@@ -227,7 +234,13 @@ impl Tagged {
             }
             OpenerKind::Invoke => {
                 let after = &text[body_start..];
-                matching_invoke_close(&text[opener.start..body_start], after)
+                let close = matching_invoke_close(&text[opener.start..body_start], after);
+                let successor = named_invoke_boundary(after);
+                if successor.is_some_and(|start| close.is_none_or(|(end, _)| start < end)) {
+                    None
+                } else {
+                    close
+                }
             }
             OpenerKind::Fence => fence_close(&text[body_start..]),
         };
