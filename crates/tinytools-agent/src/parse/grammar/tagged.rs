@@ -57,6 +57,39 @@ static TAG_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     .ok()
 });
 
+/// The bare `<invoke>` literal — no attributes — with the optional `DeepSeek`
+/// DSML marker or XML namespace the named form already tolerates
+/// ([`super::invoke_xml`]'s `PREFIX`).
+///
+/// The prefix used to be absent here: the opener was a literal `"<invoke>"`
+/// match and the closer a literal `"</invoke>"`, so `<｜DSML｜ invoke>` — a
+/// `deepseek` turn that emitted the invoke form *without* a `name` attribute,
+/// carrying the name in the JSON body instead — opened no block and the call
+/// was dropped as prose. The named spelling `<｜DSML｜invoke name="x">` parsed
+/// fine, and so did the unprefixed bare `<invoke>`; only the combination of
+/// the two accommodations was missing.
+///
+/// Attributes are excluded on purpose: `<invoke name="x">` belongs to
+/// [`super::invoke_xml`], which reads the name off the tag. This matches only
+/// the attribute-less form, whose name can come from the body.
+static BARE_INVOKE_OPEN_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(r"(?i)<(?:[|\u{ff5c}]{1,2}\s*DSML\s*[|\u{ff5c}]{1,2}\s*|[a-z_][\w.-]*:)?invoke\s*>")
+        .ok()
+});
+
+/// The matching closer for [`BARE_INVOKE_OPEN_RE`], same prefixes.
+static BARE_INVOKE_CLOSE_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(r"(?i)</(?:[|\u{ff5c}]{1,2}\s*DSML\s*[|\u{ff5c}]{1,2}\s*|[a-z_][\w.-]*:)?invoke\s*>")
+        .ok()
+});
+
+/// First match of `re` in `haystack`, as `(start, end)`.
+fn find_re(re: &LazyLock<Option<Regex>>, haystack: &str) -> Option<(usize, usize)> {
+    re.as_ref()
+        .and_then(|re| re.find(haystack))
+        .map(|m| (m.start(), m.end()))
+}
+
 /// Openers a fenced block can carry. `` ```tool_calls `` (plural) is listed
 /// separately from `` ```tool_call `` rather than relying on a prefix match:
 /// `next_opener` requires the language to end exactly at the literal, so
@@ -160,7 +193,7 @@ impl Tagged {
             }
             OpenerKind::Invoke => {
                 let after = &text[body_start..];
-                after.find("</invoke>").map(|i| (i, i + "</invoke>".len()))
+                find_re(&BARE_INVOKE_CLOSE_RE, after)
             }
             OpenerKind::Fence => fence_close(&text[body_start..]),
         };
@@ -249,9 +282,25 @@ impl Tagged {
                 });
             }
         }
+        // Nothing recoverable in this block. It ends at the next opener rather
+        // than at end-of-text: consuming the remainder would take any
+        // well-formed call that follows down with it.
+        //
+        // That is not hypothetical. A `deepseek` turn emitted an unterminated
+        // `<tool_call>` whose body carried `{"arguments":{…}}` with no name —
+        // unrecoverable, correctly — immediately followed by a complete
+        // `<｜DSML｜ invoke>` call. Swallowing to end-of-text dropped the good
+        // call with the bad one and the whole response parsed as prose. A
+        // block that failed to decode must not be allowed to bury its
+        // successors.
+        //
+        // `next_opener` searches from `body_start`, which is strictly past
+        // `opener.start`, so the scan always advances and cannot spin.
+        let end = next_opener(text, opener.body_start)
+            .map_or_else(|| text.len(), |next| next.start);
         Probe::Found(Block {
             start: opener.start,
-            end: text.len(),
+            end,
             decoded: Decoded::Verbatim,
         })
     }
@@ -357,12 +406,12 @@ fn next_opener(text: &str, from: usize) -> Option<Opener> {
         }
     }
 
-    if let Some(idx) = find_ci(text, "<invoke>", from) {
+    if let Some((start, end)) = find_re(&BARE_INVOKE_OPEN_RE, &text[from..]) {
         consider(
             &mut best,
             Opener {
-                start: idx,
-                body_start: idx + "<invoke>".len(),
+                start: from + start,
+                body_start: from + end,
                 kind: OpenerKind::Invoke,
             },
         );
@@ -419,7 +468,7 @@ fn fence_close(after: &str) -> Option<(usize, usize)> {
             })
             .map(|m| (m.start(), m.end())),
     );
-    consider(after.find("</invoke>").map(|i| (i, i + "</invoke>".len())));
+    consider(find_re(&BARE_INVOKE_CLOSE_RE, after));
     best
 }
 
