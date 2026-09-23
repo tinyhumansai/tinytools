@@ -575,20 +575,17 @@ fn the_plural_dsml_wrapper_is_not_a_tag_marker() {
 }
 
 #[test]
-fn repro_isolate() {
-    let cases: &[(&str, &str)] = &[
-        ("A: tool_call opener, DSML parameter closer, name in json",
-         "<tool_call>\n{\"arguments\":{\"path\":\"p\"},\"name\":\"file_write\"}</\u{ff5c}DSML\u{ff5c} parameter>"),
-        ("B: bare DSML invoke opener, name in json",
-         "<\u{ff5c}DSML\u{ff5c} invoke>\n{\"arguments\":{\"command\":\"ls\"},\"name\":\"shell\"}</\u{ff5c}DSML\u{ff5c} parameter>\n</\u{ff5c}DSML\u{ff5c} invoke>"),
-        ("C: tool_call opener, proper closer (control)",
-         "<tool_call>\n{\"arguments\":{\"path\":\"p\"},\"name\":\"file_write\"}</tool_call>"),
-        ("D: bare plain invoke opener, name in json",
-         "<invoke>\n{\"arguments\":{\"command\":\"ls\"},\"name\":\"shell\"}</invoke>"),
-        ("E: tool_call opener, DSML invoke closer",
-         "<tool_call>\n{\"arguments\":{\"path\":\"p\"},\"name\":\"file_write\"}</\u{ff5c}DSML\u{ff5c} invoke>"),
-        ("F: tool_call opener, unterminated (eof)",
-         "<tool_call>\n{\"arguments\":{\"path\":\"p\"},\"name\":\"file_write\"}"),
+fn repro_isolate2() {
+    let p = "</\u{ff5c}DSML\u{ff5c} parameter>";
+    let cases: &[(&str, String)] = &[
+        ("G: tool_call + args-only json + DSML param closer",
+         format!("<tool_call>\n{{\"arguments\":{{\"path\":\"p\"}}}}{p}")),
+        ("H: G + bogus name parameter line",
+         format!("<tool_call>\n{{\"arguments\":{{\"path\":\"p\"}}}}{p}\n<\u{ff5c}DSML\u{ff5c} parameter name=\"name\":\"file_write\"}}{p}")),
+        ("I: H + DSML invoke closer",
+         format!("<tool_call>\n{{\"arguments\":{{\"path\":\"p\"}}}}{p}\n<\u{ff5c}DSML\u{ff5c} parameter name=\"name\":\"file_write\"}}{p}\n</\u{ff5c}DSML\u{ff5c} invoke>")),
+        ("J: named DSML invoke (control)",
+         format!("<\u{ff5c}DSML\u{ff5c} invoke name=\"shell\">\n{{\"arguments\":{{\"command\":\"ls\"}}}}{p}\n</\u{ff5c}DSML\u{ff5c} invoke>")),
     ];
     for (label, text) in cases {
         let out = crate::parse::test::parse_known(text, &["file_write", "shell"]);
