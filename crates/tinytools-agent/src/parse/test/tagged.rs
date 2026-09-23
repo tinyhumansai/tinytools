@@ -587,7 +587,7 @@ fn repro_dsml_closers_on_a_tool_call_opener() {
         "</\u{ff5c}DSML\u{ff5c} invoke>\n",
         "</\u{ff5c}DSML\u{ff5c} calls>",
     );
-    let out = parse_known(text, &["file_write", "shell"]);
+    let out = crate::parse::test::parse_known(text, &["file_write", "shell"]);
     let (narrative, calls) = (out.text.clone(), out.calls.clone());
     eprintln!("NARRATIVE: {narrative:?}");
     eprintln!("CALLS: {}", calls.len());
