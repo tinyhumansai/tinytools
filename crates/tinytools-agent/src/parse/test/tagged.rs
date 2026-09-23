@@ -575,24 +575,25 @@ fn the_plural_dsml_wrapper_is_not_a_tag_marker() {
 }
 
 #[test]
-fn repro_dsml_closers_on_a_tool_call_opener() {
-    let text = concat!(
-        "Heredocs aren't working in this shell. Writing the script to a file instead.\n\n",
-        "<tool_call>\n",
-        "{\"arguments\":{\"path\":\"work/extract.py\",\"content\":\"import re\"}}</\u{ff5c}DSML\u{ff5c} parameter>\n",
-        "<\u{ff5c}DSML\u{ff5c} parameter name=\"name\":\"file_write\"}</\u{ff5c}DSML\u{ff5c} parameter>\n",
-        "</\u{ff5c}DSML\u{ff5c} invoke>\n",
-        "<\u{ff5c}DSML\u{ff5c} invoke>\n",
-        "{\"arguments\":{\"category\":\"read\",\"command\":\"ls\"},\"name\":\"shell\"}</\u{ff5c}DSML\u{ff5c} parameter>\n",
-        "</\u{ff5c}DSML\u{ff5c} invoke>\n",
-        "</\u{ff5c}DSML\u{ff5c} calls>",
-    );
-    let out = crate::parse::test::parse_known(text, &["file_write", "shell"]);
-    let (narrative, calls) = (out.text.clone(), out.calls.clone());
-    eprintln!("NARRATIVE: {narrative:?}");
-    eprintln!("CALLS: {}", calls.len());
-    for c in &calls {
-        eprintln!("  name={:?} args={}", c.name, c.arguments);
+fn repro_isolate() {
+    let cases: &[(&str, &str)] = &[
+        ("A: tool_call opener, DSML parameter closer, name in json",
+         "<tool_call>\n{\"arguments\":{\"path\":\"p\"},\"name\":\"file_write\"}</\u{ff5c}DSML\u{ff5c} parameter>"),
+        ("B: bare DSML invoke opener, name in json",
+         "<\u{ff5c}DSML\u{ff5c} invoke>\n{\"arguments\":{\"command\":\"ls\"},\"name\":\"shell\"}</\u{ff5c}DSML\u{ff5c} parameter>\n</\u{ff5c}DSML\u{ff5c} invoke>"),
+        ("C: tool_call opener, proper closer (control)",
+         "<tool_call>\n{\"arguments\":{\"path\":\"p\"},\"name\":\"file_write\"}</tool_call>"),
+        ("D: bare plain invoke opener, name in json",
+         "<invoke>\n{\"arguments\":{\"command\":\"ls\"},\"name\":\"shell\"}</invoke>"),
+        ("E: tool_call opener, DSML invoke closer",
+         "<tool_call>\n{\"arguments\":{\"path\":\"p\"},\"name\":\"file_write\"}</\u{ff5c}DSML\u{ff5c} invoke>"),
+        ("F: tool_call opener, unterminated (eof)",
+         "<tool_call>\n{\"arguments\":{\"path\":\"p\"},\"name\":\"file_write\"}"),
+    ];
+    for (label, text) in cases {
+        let out = crate::parse::test::parse_known(text, &["file_write", "shell"]);
+        eprintln!("{label} -> calls={} names={:?}", out.calls.len(),
+            out.calls.iter().map(|c| c.name.clone()).collect::<Vec<_>>());
     }
     panic!("inspection");
 }
