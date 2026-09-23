@@ -632,7 +632,7 @@ fn an_undecodable_block_does_not_swallow_the_call_after_it() {
         "</｜DSML｜ invoke>\n",
         "</｜DSML｜ calls>"
     );
-    let outcome = parse_known(raw, &["file_write", "shell"]);
+    let outcome = super::parse_known(raw, &["file_write", "shell"]);
     assert_eq!(
         outcome.calls.len(),
         1,
@@ -647,7 +647,7 @@ fn an_undecodable_block_does_not_swallow_the_call_after_it() {
         "<tool_call>\n{\"arguments\":{\"path\":\"x\"}}</｜DSML｜ parameter>\n",
         "<｜DSML｜ invoke>\n{\"arguments\":{\"command\":\"ls\"},\"name\":\"shell\"}</｜DSML｜ invoke>"
     );
-    let outcome = parse_known(raw, &["file_write", "shell"]);
+    let outcome = super::parse_known(raw, &["file_write", "shell"]);
     assert_eq!(outcome.calls.len(), 1, "{:?}", outcome.calls);
     assert_eq!(outcome.calls[0].name, "shell");
 }
