@@ -573,23 +573,3 @@ fn the_plural_dsml_wrapper_is_not_a_tag_marker() {
     assert_eq!(calls.len(), 1, "the inner call is the only call: {calls:?}");
     assert_eq!(calls[0].name, "echo");
 }
-
-#[test]
-fn repro_check2() {
-    let p = "</\u{ff5c}DSML\u{ff5c} parameter>";
-    let inv = "\u{ff5c}DSML\u{ff5c} invoke";
-    let cases: &[(&str, String)] = &[
-        ("K: FULL but first json HAS a name",
-         format!("Heredocs aren't working.\n\n<tool_call>\n{{\"arguments\":{{\"path\":\"x\"}},\"name\":\"file_write\"}}{p}\n</{inv}>\n<{inv}>\n{{\"arguments\":{{\"command\":\"ls\"}},\"name\":\"shell\"}}{p}\n</{inv}>")),
-        ("L: nameless json then a good DSML invoke",
-         format!("<tool_call>\n{{\"arguments\":{{\"path\":\"x\"}}}}{p}\n<{inv}>\n{{\"arguments\":{{\"command\":\"ls\"}},\"name\":\"shell\"}}{p}\n</{inv}>")),
-        ("M: just the good DSML invoke after prose",
-         format!("Heredocs aren't working.\n\n<{inv}>\n{{\"arguments\":{{\"command\":\"ls\"}},\"name\":\"shell\"}}{p}\n</{inv}>")),
-    ];
-    for (label, text) in cases {
-        let out = crate::parse::test::parse_known(text, &["file_write", "shell"]);
-        eprintln!("{label} -> calls={} names={:?}", out.calls.len(),
-            out.calls.iter().map(|c| c.name.clone()).collect::<Vec<_>>());
-    }
-    panic!("inspection");
-}
