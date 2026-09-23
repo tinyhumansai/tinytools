@@ -108,6 +108,17 @@ fn matching_invoke_close(opener: &str, after: &str) -> Option<(usize, usize)> {
     find_ci(after, &closer, start).map(|index| (index, index + closer.len()))
 }
 
+/// Finds a bare invoke's closer unless a complete named successor comes first.
+fn invoke_close(opener: &str, after: &str) -> Option<(usize, usize)> {
+    let close = matching_invoke_close(opener, after);
+    let successor = named_invoke_boundary(after);
+    if successor.is_some_and(|start| close.is_none_or(|(end, _)| start < end)) {
+        None
+    } else {
+        close
+    }
+}
+
 /// The start of a later block that is safe to parse after an unterminated,
 /// undecodable tagged block.
 ///
@@ -234,13 +245,7 @@ impl Tagged {
             }
             OpenerKind::Invoke => {
                 let after = &text[body_start..];
-                let close = matching_invoke_close(&text[opener.start..body_start], after);
-                let successor = named_invoke_boundary(after);
-                if successor.is_some_and(|start| close.is_none_or(|(end, _)| start < end)) {
-                    None
-                } else {
-                    close
-                }
+                invoke_close(&text[opener.start..body_start], after)
             }
             OpenerKind::Fence => fence_close(&text[body_start..]),
         };
