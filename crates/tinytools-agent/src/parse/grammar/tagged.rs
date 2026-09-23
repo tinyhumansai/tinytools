@@ -282,9 +282,25 @@ impl Tagged {
                 });
             }
         }
+        // Nothing recoverable in this block. It ends at the next opener rather
+        // than at end-of-text: consuming the remainder would take any
+        // well-formed call that follows down with it.
+        //
+        // That is not hypothetical. A `deepseek` turn emitted an unterminated
+        // `<tool_call>` whose body carried `{"arguments":{…}}` with no name —
+        // unrecoverable, correctly — immediately followed by a complete
+        // `<｜DSML｜ invoke>` call. Swallowing to end-of-text dropped the good
+        // call with the bad one and the whole response parsed as prose. A
+        // block that failed to decode must not be allowed to bury its
+        // successors.
+        //
+        // `next_opener` searches from `body_start`, which is strictly past
+        // `opener.start`, so the scan always advances and cannot spin.
+        let end = next_opener(text, opener.body_start)
+            .map_or_else(|| text.len(), |next| next.start);
         Probe::Found(Block {
             start: opener.start,
-            end: text.len(),
+            end,
             decoded: Decoded::Verbatim,
         })
     }
