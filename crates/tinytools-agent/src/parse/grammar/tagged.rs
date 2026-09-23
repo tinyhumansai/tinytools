@@ -77,10 +77,15 @@ static BARE_INVOKE_OPEN_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
         .ok()
 });
 
-/// The matching closer for [`BARE_INVOKE_OPEN_RE`], same prefixes.
-static BARE_INVOKE_CLOSE_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
-    Regex::new(r"(?i)</(?:[|\u{ff5c}]{1,2}\s*DSML\s*[|\u{ff5c}]{1,2}\s*|[a-z_][\w.-]*:)?invoke\s*>")
-        .ok()
+/// A complete named invoke or function opener accepted by `invoke_xml`.
+///
+/// This is used only as a recovery boundary after a complete JSON value. The
+/// tagged grammar must leave that later call for `invoke_xml` to decode.
+static NAMED_INVOKE_OPEN_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?is)<(?:[|\u{ff5c}]{1,2}\s*DSML\s*[|\u{ff5c}]{1,2}\s*|[a-z_][\w.-]*:)?(?:invoke|function)(?:\s+[^>]*?\bname\s*=\s*"[^"]*"[^>]*|\s*=\s*[^\s>,]+[^>]*)>"#,
+    )
+    .ok()
 });
 
 /// First match of `re` in `haystack`, as `(start, end)`.
@@ -88,6 +93,35 @@ fn find_re(re: &LazyLock<Option<Regex>>, haystack: &str) -> Option<(usize, usize
     re.as_ref()
         .and_then(|re| re.find(haystack))
         .map(|m| (m.start(), m.end()))
+}
+
+/// Finds the closer that has the exact prefix and spelling of `opener`.
+///
+/// A bare `<invoke>` must not be closed by `</atem:invoke>` embedded in its
+/// JSON body. When the body begins with valid JSON, skip that whole value too:
+/// a matching-looking closer in a JSON string is data rather than markup.
+fn matching_invoke_close(opener: &str, after: &str) -> Option<(usize, usize)> {
+    let closer = format!("</{}", &opener[1..]);
+    let json_end = find_json_end(after)
+        .filter(|&end| serde_json::from_str::<serde_json::Value>(&after[..end]).is_ok());
+    let start = json_end.unwrap_or(0);
+    find_ci(after, &closer, start).map(|index| (index, index + closer.len()))
+}
+
+/// The start of a later block that is safe to parse after an unterminated,
+/// undecodable tagged block.
+///
+/// A successfully decoded leading JSON value is the only reliable delimiter
+/// available without a matching outer tag. It prevents an `<invoke …>` inside
+/// a rejected JSON string from becoming an executable nested call.
+fn recovery_boundary(text: &str, body_start: usize) -> Option<usize> {
+    let after = &text[body_start..];
+    let json_end = find_json_end(after)
+        .filter(|&end| serde_json::from_str::<serde_json::Value>(&after[..end]).is_ok())?;
+    let from = body_start + json_end;
+    let tagged = next_opener(text, from).map(|opener| opener.start);
+    let named = find_re(&NAMED_INVOKE_OPEN_RE, &text[from..]).map(|(start, _)| from + start);
+    [tagged, named].into_iter().flatten().min()
 }
 
 /// Openers a fenced block can carry. `` ```tool_calls `` (plural) is listed
@@ -193,7 +227,7 @@ impl Tagged {
             }
             OpenerKind::Invoke => {
                 let after = &text[body_start..];
-                find_re(&BARE_INVOKE_CLOSE_RE, after)
+                matching_invoke_close(&text[opener.start..body_start], after)
             }
             OpenerKind::Fence => fence_close(&text[body_start..]),
         };
@@ -282,9 +316,10 @@ impl Tagged {
                 });
             }
         }
-        // Nothing recoverable in this block. It ends at the next opener rather
-        // than at end-of-text: consuming the remainder would take any
-        // well-formed call that follows down with it.
+        // Nothing recoverable in this block. A complete JSON value establishes
+        // a structural boundary after the malformed call. Only then may a
+        // later opener start a new scan: markup inside the JSON value is data,
+        // never a nested call to execute.
         //
         // That is not hypothetical. A `deepseek` turn emitted an unterminated
         // `<tool_call>` whose body carried `{"arguments":{…}}` with no name —
@@ -294,10 +329,7 @@ impl Tagged {
         // block that failed to decode must not be allowed to bury its
         // successors.
         //
-        // `next_opener` searches from `body_start`, which is strictly past
-        // `opener.start`, so the scan always advances and cannot spin.
-        let end = next_opener(text, opener.body_start)
-            .map_or_else(|| text.len(), |next| next.start);
+        let end = recovery_boundary(text, body_start).unwrap_or(text.len());
         Probe::Found(Block {
             start: opener.start,
             end,
@@ -445,8 +477,8 @@ fn next_opener(text: &str, from: usize) -> Option<Opener> {
     best
 }
 
-/// The closer of a fenced block: a closing fence, a stray tag-family closer,
-/// or `</invoke>`, whichever comes first.
+/// The closer of a fenced block: a closing fence or a stray tag-family closer,
+/// whichever comes first.
 fn fence_close(after: &str) -> Option<(usize, usize)> {
     let mut best: Option<(usize, usize)> = None;
     let mut consider = |candidate: Option<(usize, usize)>| {
@@ -468,7 +500,6 @@ fn fence_close(after: &str) -> Option<(usize, usize)> {
             })
             .map(|m| (m.start(), m.end())),
     );
-    consider(find_re(&BARE_INVOKE_CLOSE_RE, after));
     best
 }
 

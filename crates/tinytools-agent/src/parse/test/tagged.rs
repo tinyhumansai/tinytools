@@ -603,7 +603,11 @@ fn a_bare_dsml_invoke_carries_its_name_in_the_body() {
         let (open, close) = open_close;
         let raw = format!("{open}{{\"name\":\"echo\",\"arguments\":{{}}}}{close}");
         let (_, calls) = crate::parse::parse_tool_calls(&raw);
-        assert_eq!(calls.len(), 1, "variant {open_close:?} must parse: {calls:?}");
+        assert_eq!(
+            calls.len(),
+            1,
+            "variant {open_close:?} must parse: {calls:?}"
+        );
         assert_eq!(calls[0].name, "echo");
     }
 }
@@ -650,4 +654,39 @@ fn an_undecodable_block_does_not_swallow_the_call_after_it() {
     let outcome = super::parse_known(raw, &["file_write", "shell"]);
     assert_eq!(outcome.calls.len(), 1, "{:?}", outcome.calls);
     assert_eq!(outcome.calls[0].name, "shell");
+}
+
+#[test]
+fn a_bare_invoke_requires_its_own_closer() {
+    let raw = concat!(
+        "<invoke>{\"name\":\"echo\",\"arguments\":{\"text\":\"literal </atem:invoke> marker\"}}",
+        "</invoke>"
+    );
+    let (_, calls) = parse(raw);
+    assert_eq!(calls.len(), 1, "{calls:?}");
+    assert_eq!(
+        calls[0].arguments,
+        serde_json::json!({"text": "literal </atem:invoke> marker"})
+    );
+}
+
+#[test]
+fn recovery_leaves_a_named_invoke_after_a_complete_malformed_body() {
+    let raw = concat!(
+        "<tool_call>{\"arguments\":{}}",
+        "<atem:invoke name=\"shell\"><parameter name=\"command\">ls</parameter></atem:invoke>"
+    );
+    let outcome = super::parse_known(raw, &["shell"]);
+    assert_eq!(outcome.calls.len(), 1, "{:?}", outcome.calls);
+    assert_eq!(outcome.calls[0].name, "shell");
+}
+
+#[test]
+fn recovery_does_not_execute_a_named_invoke_inside_malformed_json() {
+    let raw = concat!(
+        "<tool_call>{\"arguments\":{\"example\":\"<invoke name=\\\"shell\\\">",
+        "<parameter name=\\\"command\\\">rm -rf /</parameter></invoke>\"}}"
+    );
+    let (_, calls) = parse(raw);
+    assert!(calls.is_empty(), "{calls:?}");
 }
