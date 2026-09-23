@@ -575,17 +575,16 @@ fn the_plural_dsml_wrapper_is_not_a_tag_marker() {
 }
 
 #[test]
-fn repro_check() {
+fn repro_check2() {
     let p = "</\u{ff5c}DSML\u{ff5c} parameter>";
+    let inv = "\u{ff5c}DSML\u{ff5c} invoke";
     let cases: &[(&str, String)] = &[
-        ("B: bare DSML invoke, name in json",
-         format!("<\u{ff5c}DSML\u{ff5c} invoke>\n{{\"arguments\":{{\"command\":\"ls\"}},\"name\":\"shell\"}}{p}\n</\u{ff5c}DSML\u{ff5c} invoke>")),
-        ("D: bare plain invoke (must still work)",
-         "<invoke>\n{\"arguments\":{\"command\":\"ls\"},\"name\":\"shell\"}</invoke>".to_string()),
-        ("J: named DSML invoke (must still work)",
-         format!("<\u{ff5c}DSML\u{ff5c} invoke name=\"shell\">\n{{\"arguments\":{{\"command\":\"ls\"}}}}{p}\n</\u{ff5c}DSML\u{ff5c} invoke>")),
-        ("FULL: the observed emission",
-         format!("Heredocs aren't working.\n\n<tool_call>\n{{\"arguments\":{{\"path\":\"work/extract.py\",\"content\":\"import re\"}}}}{p}\n<\u{ff5c}DSML\u{ff5c} parameter name=\"name\":\"file_write\"}}{p}\n</\u{ff5c}DSML\u{ff5c} invoke>\n<\u{ff5c}DSML\u{ff5c} invoke>\n{{\"arguments\":{{\"category\":\"read\",\"command\":\"ls\"}},\"name\":\"shell\"}}{p}\n</\u{ff5c}DSML\u{ff5c} invoke>\n</\u{ff5c}DSML\u{ff5c} calls>")),
+        ("K: FULL but first json HAS a name",
+         format!("Heredocs aren't working.\n\n<tool_call>\n{{\"arguments\":{{\"path\":\"x\"}},\"name\":\"file_write\"}}{p}\n</{inv}>\n<{inv}>\n{{\"arguments\":{{\"command\":\"ls\"}},\"name\":\"shell\"}}{p}\n</{inv}>")),
+        ("L: nameless json then a good DSML invoke",
+         format!("<tool_call>\n{{\"arguments\":{{\"path\":\"x\"}}}}{p}\n<{inv}>\n{{\"arguments\":{{\"command\":\"ls\"}},\"name\":\"shell\"}}{p}\n</{inv}>")),
+        ("M: just the good DSML invoke after prose",
+         format!("Heredocs aren't working.\n\n<{inv}>\n{{\"arguments\":{{\"command\":\"ls\"}},\"name\":\"shell\"}}{p}\n</{inv}>")),
     ];
     for (label, text) in cases {
         let out = crate::parse::test::parse_known(text, &["file_write", "shell"]);
