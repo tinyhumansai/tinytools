@@ -299,3 +299,70 @@ pub fn to_provider_messages(history: &[TranscriptEntry]) -> Vec<DialectMessage> 
         })
         .collect()
 }
+
+/// Inverse of the id-keyed `ToolResults` replay frame [`to_provider_messages`]
+/// emits: split one `[Tool results]` user turn back into its per-call entries.
+///
+/// A text-dialect transcript persists the provider form, so a reader that needs
+/// to pair each result with the call that produced it (a display projection, a
+/// durable-row adapter) has only this rendered turn to go on. Keeping the
+/// parser beside the renderer keeps the two formats from drifting.
+///
+/// Returns `None` unless `content` is exactly a replay frame — the
+/// [`TOOL_RESULTS_PREFIX`] followed by one or more
+/// `<tool_result id="…">\n…\n</tool_result>\n` blocks and nothing else — so
+/// ordinary user prose, the in-turn `name=`/`status=` frame and a verbatim
+/// result are never misread. Ids are attribute-unescaped. Bodies are returned
+/// as the model read them: protocol tag openers stay neutralized (`&lt;`), which
+/// cannot be reversed unambiguously and never changes a result's meaning.
+#[must_use]
+pub fn parse_replayed_results(content: &str) -> Option<Vec<ToolResultEntry>> {
+    const OPEN: &str = "<tool_result id=\"";
+    const OPEN_END: &str = "\">\n";
+    const CLOSE: &str = "\n</tool_result>\n";
+
+    let mut rest = content.strip_prefix(TOOL_RESULTS_PREFIX)?;
+    let mut entries = Vec::new();
+    while !rest.is_empty() {
+        let after_open = rest.strip_prefix(OPEN)?;
+        let id_end = after_open.find(OPEN_END)?;
+        let raw_id = &after_open[..id_end];
+        if raw_id.contains('"') || raw_id.contains('<') || raw_id.contains('>') {
+            return None;
+        }
+        let body_and_rest = &after_open[id_end + OPEN_END.len()..];
+        // A body cannot spell `</tool_result` (it is neutralized on render),
+        // so the first close is this block's own.
+        // An empty body renders as `\n\n</tool_result>\n`: its close starts
+        // at offset 0 of `body_and_rest`.
+        let close = body_and_rest.find(CLOSE)?;
+        let (body, tail) = (
+            &body_and_rest[..close],
+            &body_and_rest[close + CLOSE.len()..],
+        );
+        entries.push(ToolResultEntry {
+            tool_call_id: unescape_attribute(raw_id),
+            content: body.to_string(),
+            trusted_verbatim: false,
+        });
+        rest = tail;
+    }
+    (!entries.is_empty()).then_some(entries)
+}
+
+/// Inverse of `escape_attribute`. `&amp;` is decoded last so an escaped
+/// entity spelled in the original (`&amp;lt;`) round-trips to `&lt;`.
+fn unescape_attribute(value: &str) -> String {
+    if !value.contains('&') {
+        return value.to_string();
+    }
+    value
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&amp;", "&")
+}
+
+#[cfg(test)]
+#[path = "results_test.rs"]
+mod test;

@@ -27,4 +27,6 @@ pub use catalogue::{
 pub use instructions::{
     code_instructions, json_instructions, native_instructions, pformat_instructions,
 };
-pub use results::{TOOL_RESULTS_PREFIX, format_results, to_provider_messages};
+pub use results::{
+    TOOL_RESULTS_PREFIX, format_results, parse_replayed_results, to_provider_messages,
+};
