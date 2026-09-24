@@ -38,8 +38,8 @@ mod xml;
 
 pub use crate::codecall::CodeStyle;
 pub use crate::render::{
-    CATALOGUE_HEADING, TOOL_RESULTS_PREFIX, render_code_catalogue, render_json_catalogue,
-    render_pformat_catalogue,
+    CATALOGUE_HEADING, TOOL_RESULTS_PREFIX, parse_replayed_results, render_code_catalogue,
+    render_json_catalogue, render_pformat_catalogue,
 };
 pub use code::CodeDialect;
 pub use native::NativeDialect;
