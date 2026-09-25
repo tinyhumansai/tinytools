@@ -100,6 +100,26 @@ fn dsml_split_across_fragments_is_scrubbed() {
 }
 
 #[test]
+fn a_whitespace_prefixed_dsml_opener_split_before_the_marker_is_held() {
+    // The complete-tag regex tolerates a space before the marker
+    // (`< | DSML | invoke`), but that must not regress streaming: a
+    // fragment boundary landing right after `<` and before the marker has
+    // arrived must still be held, or the opener is lost the moment the
+    // held-back fragment is flushed as narrative.
+    let mut s = StreamScrubber::new();
+    let first = s.feed("< ");
+    assert_eq!(
+        first.text, "",
+        "a possible whitespace-prefixed DSML opener must be held"
+    );
+    assert!(first.calls.is_empty());
+
+    let second = s.feed("| DSML | invoke name=\"read\">{\"path\":\"a\"}</| DSML | invoke>");
+    assert_eq!(second.calls.len(), 1);
+    assert_eq!(second.calls[0].name, "read");
+}
+
+#[test]
 fn plural_tool_calls_prose_is_not_held() {
     assert_eq!(
         scrub_all(&["the <tool_calls> ", "key"]).0,
