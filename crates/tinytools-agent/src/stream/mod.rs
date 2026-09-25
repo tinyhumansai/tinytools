@@ -151,7 +151,29 @@ fn hold_from(tail: &str) -> usize {
             }
         }
     }
+    if let Some(idx) = trailing_bare_angle_bracket(tail) {
+        best = best.min(idx);
+    }
     best
+}
+
+/// Byte index of a trailing `<` or `</` in `tail` that is followed only by
+/// whitespace to the end of the string, if any (`<\s*$` / `</\s*$`).
+///
+/// The invoke-XML grammar's DSML/namespace prefix tolerates whitespace
+/// between the bracket and the marker (`< | DSML | invoke`), which the
+/// fixed-literal scan above cannot express — a gap of unknown width is not
+/// a literal to prefix-match against. Without this, a fragment boundary
+/// landing on the bracket and its whitespace (`"< "`) is released as plain
+/// text before the marker arrives, and the opener is unrecoverable once
+/// split from its `<`.
+fn trailing_bare_angle_bracket(tail: &str) -> Option<usize> {
+    let trimmed = tail.trim_end_matches(char::is_whitespace);
+    if let Some(stripped) = trimmed.strip_suffix("</") {
+        Some(stripped.len())
+    } else {
+        trimmed.strip_suffix('<').map(str::len)
+    }
 }
 
 #[cfg(test)]
