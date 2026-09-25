@@ -230,43 +230,28 @@ impl Grammar for Tagged {
 impl Tagged {
     /// The next block whose opener is fully present.
     fn probe_decided(text: &str, from: usize, options: &ParseOptions<'_>, mode: ScanMode) -> Probe {
-        let Some(opener) = next_opener(text, from) else {
+        let opener = next_opener(text, from);
+        if let Some(noise) = orphan_closer_noise(text, from, opener.as_ref()) {
+            return noise;
+        }
+
+        let Some(opener) = opener else {
             return Probe::None;
         };
         let mut body_start = opener.body_start;
 
-        // How many extra openers a doubled block skipped, so the matching
-        // number of extra closers — never an unrelated closing tag such as
-        // `</div>` — can be swallowed below. `DeepSeek` V4 doubles both the
-        // opener and the closer under a code dialect:
-        // `<tool_call>\n<tool_call>\nNAME(...)\n</tool_call>\n</tool_call>`.
-        let mut skipped = 0usize;
-        let close = match opener.kind {
+        let (close, skipped) = match opener.kind {
             OpenerKind::Tag => {
-                // Positional pairing means a doubled opener would otherwise
-                // close the first tag on an empty body and lose the call. An
-                // opener followed by nothing but whitespace is the same
-                // block starting again, so the scan moves past it.
-                let re = TAG_RE.as_ref();
-                loop {
-                    let after = &text[body_start..];
-                    let Some(m) = re.and_then(|re| re.find(after)) else {
-                        break None;
-                    };
-                    let is_opener = !is_closing_marker(m.as_str());
-                    if is_opener && after[..m.start()].trim().is_empty() {
-                        body_start += m.end();
-                        skipped += 1;
-                        continue;
-                    }
-                    break Some((m.start(), m.end()));
-                }
+                let (close, skipped, new_body_start) =
+                    tag_close_skipping_doubled_openers(text, body_start);
+                body_start = new_body_start;
+                (close, skipped)
             }
             OpenerKind::Invoke => {
                 let after = &text[body_start..];
-                invoke_close(&text[opener.start..body_start], after)
+                (invoke_close(&text[opener.start..body_start], after), 0)
             }
-            OpenerKind::Fence => fence_close(&text[body_start..]),
+            OpenerKind::Fence => (fence_close(&text[body_start..]), 0),
         };
         let after = &text[body_start..];
 
@@ -445,6 +430,65 @@ fn swallow_extra_closers(rest: &str, max: usize, mode: ScanMode) -> Option<usize
         consumed += skipped_ws + m.end();
     }
     Some(consumed)
+}
+
+/// A closing tag-family marker at or after `from` that sits before `opener`
+/// (or has no opener after it at all) — it cannot be closing anything, since
+/// [`next_opener`] never treats a closer as an opener to pair it with. A
+/// model that made its actual call over a structured/native channel has no
+/// `<tool_call>` opener in its text at all, but sometimes still types a
+/// habitual closer in its narrative; this sweeps it as furniture rather than
+/// leaving literal markup in the visible text.
+fn orphan_closer_noise(text: &str, from: usize, opener: Option<&Opener>) -> Option<Probe> {
+    let re = TAG_RE.as_ref()?;
+    let hay = &text[from..];
+    let m = re.find(hay)?;
+    if !is_closing_marker(m.as_str()) {
+        return None;
+    }
+    let start = from + m.start();
+    if opener.is_some_and(|o| start >= o.start) {
+        return None;
+    }
+    Some(Probe::Found(Block {
+        start,
+        end: from + m.end(),
+        decoded: Decoded::Noise,
+    }))
+}
+
+/// The closer for a tag opener at `body_start`, skipping past a doubled
+/// opener first, and how many extra openers it skipped — so the matching
+/// number of extra closers, never an unrelated closing tag such as `</div>`,
+/// can be swallowed by the caller. `DeepSeek` V4 doubles both the opener and
+/// the closer under a code dialect:
+/// `<tool_call>\n<tool_call>\nNAME(...)\n</tool_call>\n</tool_call>`.
+///
+/// Positional pairing means a doubled opener would otherwise close the first
+/// tag on an empty body and lose the call. An opener followed by nothing but
+/// whitespace is the same block starting again, so the scan moves past it.
+/// Returns the closer (if any), how many openers it skipped, and the
+/// possibly-advanced body start.
+fn tag_close_skipping_doubled_openers(
+    text: &str,
+    mut body_start: usize,
+) -> (Option<(usize, usize)>, usize, usize) {
+    let re = TAG_RE.as_ref();
+    let mut skipped = 0usize;
+    let close = loop {
+        let after = &text[body_start..];
+        let Some(m) = re.and_then(|re| re.find(after)) else {
+            break None;
+        };
+        let is_opener = !is_closing_marker(m.as_str());
+        if is_opener && after[..m.start()].trim().is_empty() {
+            body_start += m.end();
+            skipped += 1;
+            continue;
+        }
+        break Some((m.start(), m.end()));
+    };
+    (close, skipped, body_start)
 }
 
 /// The earliest opener at or after `from`: a non-closing tag-family marker,

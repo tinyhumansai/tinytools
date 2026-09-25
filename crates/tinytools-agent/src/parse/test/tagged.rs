@@ -466,6 +466,23 @@ fn two_adjacent_blocks_are_still_two_blocks() {
 }
 
 #[test]
+fn an_orphaned_closer_with_no_opener_anywhere_is_removed_not_shown() {
+    // A model that made its actual call over a structured/native channel has
+    // no `<tool_call>` opener anywhere in its text at all, but sometimes still
+    // types a habitual `</tool_call>` in its narrative. `next_opener` never
+    // treats a closing marker as an opener, so nothing pairs with it — it
+    // must not be left in the visible text as literal markup.
+    let (text, calls) = parse(
+        "Let me check the details on the top contenders to find the best one for you.\n</tool_call>\nHere are the results.",
+    );
+    assert_eq!(
+        text,
+        "Let me check the details on the top contenders to find the best one for you.\nHere are the results."
+    );
+    assert!(calls.is_empty());
+}
+
+#[test]
 fn a_doubled_opener_does_not_swallow_an_unrelated_closing_tag() {
     // Only the extra `</tool_call>` a doubled opener leaves behind is
     // protocol furniture; a real closing tag right after it (`</div>`, from
