@@ -7,7 +7,10 @@
 //! * Claude's native form, `<invoke name="read"><parameter name="path">…`;
 //! * `DeepSeek` DSML, `<｜DSML｜invoke name="read">…</｜DSML｜invoke>` inside a
 //!   `<｜DSML｜tool_calls>` wrapper — with single or doubled bars, fullwidth
-//!   or ASCII, and an optional space after the marker (`<｜｜DSML｜｜ invoke`);
+//!   or ASCII, an optional space after the marker (`<｜｜DSML｜｜ invoke`), and
+//!   an optional space before the marker on either the opening or closing
+//!   tag (`< |DSML|invoke`, `</ |DSML|invoke>`) — some models add readable
+//!   spacing around the whole delimiter, not just after it;
 //! * namespaced variants such as `<atem:invoke name="default.terminal">`;
 //! * `<function name="…">` (Gemma) and `<function=NAME>` (Llama / Qwen), with
 //!   `<parameter=k>v</parameter>` children.
@@ -36,7 +39,7 @@ const PREFIX: &str = r"(?:[|｜]{1,2}\s*DSML\s*[|｜]{1,2}\s*|[A-Za-z_][\w.-]*:)
 /// `<invoke name="…">`, `<function name="…">`, `<function=NAME>`.
 static OPEN_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     Regex::new(&format!(
-        r#"(?is)<{PREFIX}(?:invoke|function)(?:\s+[^>]*?\bname\s*=\s*"([^"]*)"[^>]*|\s*=\s*([^\s>,]+)[^>]*)>"#
+        r#"(?is)<\s*{PREFIX}(?:invoke|function)(?:\s+[^>]*?\bname\s*=\s*"([^"]*)"[^>]*|\s*=\s*([^\s>,]+)[^>]*)>"#
     ))
     .ok()
 });
@@ -44,7 +47,7 @@ static OPEN_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
 /// Wrapper tags around a group of invokes, open or close.
 static WRAPPER_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     Regex::new(&format!(
-        r"(?is)</?{PREFIX}(?:tool_calls|function_calls|calls)\s*>"
+        r"(?is)</?\s*{PREFIX}(?:tool_calls|function_calls|calls)\s*>"
     ))
     .ok()
 });
@@ -61,13 +64,13 @@ static WRAPPER_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
 /// this regex recognizes the tag structurally instead, so a stream split
 /// mid-namespace still holds the fragment back.
 static OPEN_START_RE: LazyLock<Option<Regex>> =
-    LazyLock::new(|| Regex::new(&format!(r"(?is)<{PREFIX}(?:invoke|function)\b")).ok());
+    LazyLock::new(|| Regex::new(&format!(r"(?is)<\s*{PREFIX}(?:invoke|function)\b")).ok());
 
 /// A closing tag ending an invoke: its own, `</function>`, or a stray
 /// `</tool_call>` some templates substitute.
 static CLOSE_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     Regex::new(&format!(
-        r"(?is)</{PREFIX}(?:invoke|function|tool_call)\s*>"
+        r"(?is)</\s*{PREFIX}(?:invoke|function|tool_call)\s*>"
     ))
     .ok()
 });
@@ -75,14 +78,14 @@ static CLOSE_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
 /// `<parameter name="k" …>v</parameter>` and `<parameter=k>v</parameter>`.
 static PARAMETER_RE: LazyLock<Option<Regex>> = LazyLock::new(|| {
     Regex::new(&format!(
-        r#"(?is)<{PREFIX}parameter(?:\s+[^>]*?\bname\s*=\s*"([^"]*)"[^>]*|\s*=\s*([^\s>]+)[^>]*)>(.*?)</{PREFIX}parameter\s*>"#
+        r#"(?is)<\s*{PREFIX}parameter(?:\s+[^>]*?\bname\s*=\s*"([^"]*)"[^>]*|\s*=\s*([^\s>]+)[^>]*)>(.*?)</\s*{PREFIX}parameter\s*>"#
     ))
     .ok()
 });
 
 /// An orphan closing parameter tag left in a JSON body.
 static ORPHAN_PARAMETER_CLOSE_RE: LazyLock<Option<Regex>> =
-    LazyLock::new(|| Regex::new(&format!(r"(?is)</{PREFIX}parameter\s*>")).ok());
+    LazyLock::new(|| Regex::new(&format!(r"(?is)</\s*{PREFIX}parameter\s*>")).ok());
 
 impl Grammar for InvokeXml {
     fn source(&self) -> CallSource {

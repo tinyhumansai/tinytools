@@ -244,3 +244,25 @@ fn dsml_markers_never_leak_into_the_narrative() {
     assert!(!outcome.text.contains("DSML"), "{}", outcome.text);
     assert_eq!(outcome.text, "Sure.\nDone.");
 }
+
+#[test]
+fn dsml_space_before_the_marker_on_open_and_close_tags_still_parses() {
+    // A model adding readable spacing around the whole delimiter, not just
+    // after it — `< | DSML | tool_calls>` rather than `<|DSML|tool_calls>`.
+    // Reproduces a real leak: without this tolerance the block fell through
+    // to `Decoded::Verbatim` and the raw markup rendered in the chat.
+    let response = concat!(
+        "< | DSML | tool_calls> < | DSML | invoke name=\"tool_search\"> ",
+        "< | DSML | parameter name=\"query\" string=\"true\">",
+        "conversations.open slack api create dm</ | DSML | parameter> ",
+        "</ | DSML | invoke> </ | DSML | tool_calls>"
+    );
+    let (text, calls) = parse(response);
+    assert!(text.trim().is_empty(), "{text:?}");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "tool_search");
+    assert_eq!(
+        calls[0].arguments["query"],
+        "conversations.open slack api create dm"
+    );
+}
