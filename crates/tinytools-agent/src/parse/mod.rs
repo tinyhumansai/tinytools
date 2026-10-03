@@ -76,7 +76,7 @@ pub fn parse_text(text: &str, options: &ParseOptions<'_>) -> ParseOutcome {
     let diagnostics = scan.diagnostics;
 
     if calls.is_empty() {
-        let joined = parts.join("\n");
+        let joined = unprotected_narrative(text, &scan.kept);
         let (cleaned, glm_calls) = grammar::glm::parse_and_strip(&joined);
         if !glm_calls.is_empty() {
             calls = glm_calls;
@@ -84,6 +84,32 @@ pub fn parse_text(text: &str, options: &ParseOptions<'_>) -> ParseOutcome {
         }
     }
     finalize(parts.join("\n"), calls, diagnostics, options)
+}
+
+/// Keeps narrative for the GLM fallback while excluding fenced examples.
+fn unprotected_narrative(text: &str, kept: &[Range<usize>]) -> String {
+    let protected = protected::fence_ranges(text);
+    let mut parts = Vec::new();
+    for range in kept {
+        let mut cursor = range.start;
+        for fence in &protected {
+            if fence.end <= cursor || fence.start >= range.end {
+                continue;
+            }
+            if cursor < fence.start {
+                parts.push(text[cursor..fence.start.min(range.end)].trim());
+            }
+            cursor = fence.end.min(range.end);
+        }
+        if cursor < range.end {
+            parts.push(text[cursor..range.end].trim());
+        }
+    }
+    parts
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Name resolution and the diagnostics it produces.

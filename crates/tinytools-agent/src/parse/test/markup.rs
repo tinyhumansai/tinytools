@@ -46,5 +46,6 @@ fn prose_a_bare_json_answer_and_a_quoted_example_are_not_markup() {
     assert!(!contains_call_markup(
         "The format is:\n```xml\n<invoke name=\"shell\"><parameter name=\"command\">ls</parameter></invoke>\n```"
     ));
+    assert!(!contains_call_markup("```text\nshell/command>ls\n```"));
     assert!(!contains_call_markup(""));
 }
