@@ -50,7 +50,8 @@ impl Tool for ApplyPatchTool {
     fn description(&self) -> &'static str {
         "Apply a batch of exact-string edits across one or more files atomically. \
          All edits are validated before any are written; validation failure rolls \
-         back the whole batch. Each edit is `{path, old_string, new_string, replace_all?}`. \
+         back the whole batch. Each edit is `{path, old_string, new_string, replace_all?}`; \
+         a top-level `path` is the default for edits that omit their own. \
          To CREATE a new file, pass an empty `old_string` with the full contents \
          as `new_string`; the path must not already exist."
     }
@@ -59,13 +60,20 @@ impl Tool for ApplyPatchTool {
         json!({
             "type": "object",
             "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Default file for edits that omit their own `path`."
+                },
                 "edits": {
                     "type": "array",
                     "description": "Ordered list of edits.",
                     "items": {
                         "type": "object",
                         "properties": {
-                            "path": { "type": "string" },
+                            "path": {
+                                "type": "string",
+                                "description": "File to edit; defaults to the top-level `path`."
+                            },
                             "old_string": {
                                 "type": "string",
                                 "description": "Exact text to replace. Empty means CREATE: the path must not exist and `new_string` becomes the whole file."
@@ -73,7 +81,7 @@ impl Tool for ApplyPatchTool {
                             "new_string": { "type": "string" },
                             "replace_all": { "type": "boolean", "default": false }
                         },
-                        "required": ["path", "old_string", "new_string"]
+                        "required": ["old_string", "new_string"]
                     }
                 }
             },
@@ -144,13 +152,33 @@ impl ApplyPatchTool {
 
         let path_policy = gate_for_context(&self.gate, context, "apply_patch");
 
+        // "One file, several edits" is a natural call shape, and models write
+        // it with the path once at the top level (4 of 10 calls in one run;
+        // the per-edit `path` requirement rejected every one of them and the
+        // run halted on the fourth). The top-level path is the default; an
+        // edit's own path still wins.
+        let default_path = match args.get("path") {
+            Some(value) => Some(
+                value
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("top-level `path` must be a string"))?,
+            ),
+            None => None,
+        };
+
         // Parse + group edits by file.
         let mut parsed: Vec<ParsedEdit> = Vec::with_capacity(edits.len());
         for (i, raw) in edits.iter().enumerate() {
-            let path = raw
-                .get("path")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| anyhow::anyhow!("edit[{i}]: missing `path`"))?;
+            let path = match raw.get("path") {
+                Some(value) => value.as_str().ok_or_else(|| {
+                    anyhow::anyhow!("edit[{i}]: `path` must be a string")
+                })?,
+                None => default_path.ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "edit[{i}]: missing `path` (give each edit a `path`, or one top-level `path` for all edits)"
+                    )
+                })?,
+            };
             let old_string = raw
                 .get("old_string")
                 .and_then(|v| v.as_str())

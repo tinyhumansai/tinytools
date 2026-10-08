@@ -1,10 +1,14 @@
 {
-  "description": "Apply a batch of exact-string edits across one or more files atomically. All edits are validated before any are written; validation failure rolls back the whole batch. Each edit is `{path, old_string, new_string, replace_all?}`. To CREATE a new file, pass an empty `old_string` with the full contents as `new_string`; the path must not already exist.",
+  "description": "Apply a batch of exact-string edits across one or more files atomically. All edits are validated before any are written; validation failure rolls back the whole batch. Each edit is `{path, old_string, new_string, replace_all?}`; a top-level `path` is the default for edits that omit their own. To CREATE a new file, pass an empty `old_string` with the full contents as `new_string`; the path must not already exist.",
   "exposure": "Direct",
   "name": "apply_patch",
   "permission_level": "Write",
   "schema": {
     "properties": {
+      "path": {
+        "description": "Default file for edits that omit their own `path`.",
+        "type": "string"
+      },
       "edits": {
         "description": "Ordered list of edits.",
         "items": {
@@ -17,6 +21,7 @@
               "type": "string"
             },
             "path": {
+              "description": "File to edit; defaults to the top-level `path`.",
               "type": "string"
             },
             "replace_all": {
@@ -25,7 +30,6 @@
             }
           },
           "required": [
-            "path",
             "old_string",
             "new_string"
           ],
