@@ -1,6 +1,7 @@
 //! The run-scoped facts a tool may read, without naming the harness that owns
 //! them.
 
+use crate::progress::ToolProgress;
 use crate::workspace::WorkspaceDescriptor;
 
 /// The parts of a live agent run a tool is allowed to see.
@@ -61,6 +62,22 @@ pub trait ToolRunContext: Send + Sync {
     fn workspace_policy_id(&self) -> Option<&str> {
         self.workspace().map(|w| w.policy_id.as_str())
     }
+
+    /// Reports incremental progress from a call that has not finished.
+    ///
+    /// A long-running tool calls this between starting and returning:
+    /// `context.map(|c| c.report_progress(ToolProgress::message("...")))`.
+    /// A host that streams progress overrides it and routes the update to its
+    /// own transport; the default drops it, so a tool can report
+    /// unconditionally and every host that does not care — and every tool run
+    /// without a context at all — stays correct and pays nothing.
+    ///
+    /// Implementations must not block: a tool may call this from a hot loop or
+    /// from a task it spawned. A host that forwards updates to listeners must
+    /// document that those listeners may not call back into `report_progress`
+    /// re-entrantly. An update reported after the call has returned
+    /// is the host's to drop; a tool should not rely on late updates landing.
+    fn report_progress(&self, _update: ToolProgress) {}
 
     /// The host's own context object, erased, for a tool written against a
     /// specific harness that needs more than the portable facts above.

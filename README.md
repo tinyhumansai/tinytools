@@ -62,9 +62,11 @@ compiles neither the harness nor the host.
 | `classification` | `ToolScope`, `ToolCategory` — where a tool may run, and which belt it is on |
 | `policy` | `ToolPolicy`, `ToolRuntime`, `ToolAccess`, `ToolSideEffects`, `WorkspaceAccess`, `ToolDisplay` — declarative execution requirements and presentation metadata |
 | `call` | `ToolCallOptions`, `ToolTimeout` — per-invocation inputs that are not arguments |
-| `context` | `ToolRunContext` — the narrow seam onto a live run |
+| `context` | `ToolRunContext` — the narrow seam onto a live run, including `report_progress` |
+| `progress` | `ToolProgress`, `ProgressSink` — what a long-running tool reports before it returns |
 | `workspace` | `WorkspaceDescriptor`, `SandboxMode` — the root a tool may touch, and how strictly it is sandboxed |
 | `naming` | `humanize_tool_name`, `context_detail_from_args` — rendering a call for a human |
+| `shared` | `SharedTool`, `share_belt`, `owned_belt` — one built `Arc<dyn Tool>` handed out as many owned `Box<dyn Tool>` belts, forwarding every trait method |
 | `rank` | `ToolRanker`, `RankCandidate`, `RankHit`, `Bm25Ranker` — ranking a catalogue of tools against an intent, with the lexical ranker built in |
 
 The workspace also contains `tinytools-agent`, a separate crate for

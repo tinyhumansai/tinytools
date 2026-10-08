@@ -39,6 +39,15 @@ facts: workspace, thread id, and output cap — plus `host_extension()`, the
 same type-erased escape hatch `Tool::host_extension` offers, so a tool written
 against one specific harness can downcast to that harness's full context.
 
+## Sharing one tool across owned belts
+
+A host that builds a tool once and keeps it as `Arc<dyn Tool>` can still hand a
+harness the owned `Vec<Box<dyn Tool>>` it asks for each turn: `share_belt`
+moves a built belt into `Arc`s, and `owned_belt` mints a fresh owned belt of
+`SharedTool` handles over them. Each handle forwards **every** `Tool` method —
+the defaulted declarations included — so a wrapped write-level, effectful or
+hidden tool never reads as the trait default.
+
 ## Rich tool returns
 
 `ToolContent` has four block kinds: `Text`, `Json`, `Image`, and `File`.

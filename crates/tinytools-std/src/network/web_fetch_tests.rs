@@ -231,3 +231,150 @@ async fn execute_blocks_when_rate_limited() {
     assert!(result.is_error);
     assert!(result.output().contains("Rate limit exceeded"));
 }
+
+// --- HTTP error statuses ---------------------------------------------------
+//
+// Loopback is refused by the SSRF guard, so these drive `fetch_validated`
+// (everything after validation) against a one-shot local server.
+
+/// Serves one canned response and returns the base URL.
+async fn serve_once(response: &str) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let response = response.to_string();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut buf = vec![0u8; 8192];
+        let _ = socket.read(&mut buf).await.unwrap();
+        socket.write_all(response.as_bytes()).await.unwrap();
+        let _ = socket.shutdown().await;
+    });
+    format!("http://{addr}/page")
+}
+
+fn http_response(status_line: &str, headers: &str, body: &str) -> String {
+    format!(
+        "HTTP/1.1 {status_line}\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
+}
+
+async fn fetch_canned(response: String) -> ToolResult {
+    let url = serve_once(&response).await;
+    fetch(test_security(), vec![], None, None)
+        .fetch_validated(&url, 1_000_000, false)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_200_is_a_successful_result_with_the_status_header() {
+    let result = fetch_canned(http_response(
+        "200 OK",
+        "Content-Type: text/plain\r\n",
+        "hello",
+    ))
+    .await;
+    assert!(!result.is_error, "got: {}", result.output());
+    assert!(result.output().starts_with("status=200 url="));
+    assert!(result.output().ends_with("hello"));
+}
+
+#[tokio::test]
+async fn a_403_is_an_error_naming_the_status_and_suggesting_another_source() {
+    let result = fetch_canned(http_response(
+        "403 Forbidden",
+        "Content-Type: text/plain\r\n",
+        "Access denied by bot protection",
+    ))
+    .await;
+    assert!(result.is_error, "got: {}", result.output());
+    let out = result.output();
+    assert!(
+        out.contains("HTTP 403 Forbidden from 127.0.0.1"),
+        "got: {out}"
+    );
+    assert!(out.contains("refused the request"), "got: {out}");
+    assert!(out.contains("another source"), "got: {out}");
+    assert!(
+        out.contains("Access denied by bot protection"),
+        "got: {out}"
+    );
+}
+
+#[tokio::test]
+async fn a_429_is_an_error_that_reports_rate_limiting_and_retry_after() {
+    let result = fetch_canned(http_response(
+        "429 Too Many Requests",
+        "Retry-After: 120\r\n",
+        "",
+    ))
+    .await;
+    assert!(result.is_error, "got: {}", result.output());
+    let out = result.output();
+    assert!(out.contains("HTTP 429 Too Many Requests"), "got: {out}");
+    assert!(out.contains("rate limit"), "got: {out}");
+    assert!(out.contains("Retry-After: 120"), "got: {out}");
+}
+
+#[tokio::test]
+async fn a_429_without_retry_after_still_reports_rate_limiting() {
+    let result = fetch_canned(http_response("429 Too Many Requests", "", "")).await;
+    assert!(result.is_error);
+    assert!(result.output().contains("rate limit"));
+    assert!(!result.output().contains("Retry-After"));
+}
+
+#[tokio::test]
+async fn a_404_is_an_error() {
+    let result = fetch_canned(http_response(
+        "404 Not Found",
+        "Content-Type: text/html\r\n",
+        "<!DOCTYPE html><html><body><p>No such page</p></body></html>",
+    ))
+    .await;
+    assert!(result.is_error, "got: {}", result.output());
+    let out = result.output();
+    assert!(out.contains("HTTP 404 Not Found"), "got: {out}");
+    // The excerpt is the page's text, not its markup.
+    assert!(out.contains("No such page"), "got: {out}");
+    assert!(!out.contains("<p>"), "got: {out}");
+}
+
+#[tokio::test]
+async fn a_5xx_is_an_error() {
+    let result = fetch_canned(http_response("503 Service Unavailable", "", "")).await;
+    assert!(result.is_error);
+    assert!(result.output().contains("HTTP 503 Service Unavailable"));
+}
+
+#[tokio::test]
+async fn an_error_body_excerpt_is_short() {
+    let long = "x".repeat(5_000);
+    let result = fetch_canned(http_response(
+        "500 Internal Server Error",
+        "Content-Type: text/plain\r\n",
+        &long,
+    ))
+    .await;
+    assert!(result.is_error);
+    assert!(
+        result.output().len() < 1_000,
+        "excerpt must be bounded, got {} bytes",
+        result.output().len()
+    );
+}
+
+#[tokio::test]
+async fn a_redirect_is_still_reported_as_a_successful_result() {
+    let result = fetch_canned(http_response(
+        "301 Moved Permanently",
+        "Location: https://example.com/new\r\n",
+        "",
+    ))
+    .await;
+    assert!(!result.is_error, "got: {}", result.output());
+    assert!(result.output().contains("status=301"));
+    assert!(result.output().contains("location=https://example.com/new"));
+}

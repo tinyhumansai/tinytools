@@ -14,7 +14,7 @@ publish = false
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 # `image_info` base64 data URIs.
-base64 = "0.22"
+base64 = "0.23"
 # `curl` streams the response body chunk by chunk to disk.
 futures-util = { version = "0.3", default-features = false }
 # Advisory inter-process `flock` around the MEMORY.md read-modify-write.

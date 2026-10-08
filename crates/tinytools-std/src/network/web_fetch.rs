@@ -5,6 +5,11 @@
 //! disk). `web_fetch` is the single-purpose "GET and read" primitive
 //! the agent reaches for when researching: returns the response body
 //! as text, capped, with a tiny preamble (status + final URL).
+//!
+//! A 4xx/5xx response is a failed fetch: it comes back as an error result
+//! (`is_error`) naming the status and a short body excerpt, so a host that
+//! budgets or retries on tool errors sees blocked and rate-limited pages for
+//! what they are. 3xx responses are not followed and stay successful reports.
 
 use super::gate::{HttpLimits, NetGate, host_of};
 use crate::url_guard::{normalize_allowed_domains, validate_url_with_dns_check};
@@ -213,6 +218,19 @@ impl Tool for WebFetchTool {
         // before contacting the host.
         self.gate.disclose(&host_of(&url), false, false);
 
+        self.fetch_validated(&url, max_bytes, raw_requested).await
+    }
+}
+
+impl WebFetchTool {
+    /// Issue the GET for a URL that already passed the gate and the SSRF
+    /// guard, and render the response for the model.
+    async fn fetch_validated(
+        &self,
+        url: &str,
+        max_bytes: usize,
+        raw_requested: bool,
+    ) -> anyhow::Result<ToolResult> {
         // Disable automatic redirect following: reqwest follows up to 10
         // redirects by default, and a redirect target may be on a host
         // outside the allowed-domains list. We surface 3xx responses to
@@ -226,7 +244,7 @@ impl Tool for WebFetchTool {
             Err(e) => return Ok(ToolResult::error(format!("Failed to build client: {e}"))),
         };
 
-        let resp = match client.get(&url).send().await {
+        let resp = match client.get(url).send().await {
             Ok(r) => r,
             Err(e) => return Ok(ToolResult::error(format!("Request failed: {e}"))),
         };
@@ -242,6 +260,11 @@ impl Tool for WebFetchTool {
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .map(str::to_string);
+        let retry_after = resp
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
         let body = match resp.text().await {
             Ok(b) => b,
             Err(e) => return Ok(ToolResult::error(format!("Failed to read body: {e}"))),
@@ -254,6 +277,30 @@ impl Tool for WebFetchTool {
                 "status={} url={} location={loc}\n[redirect not followed — re-call web_fetch with the location URL if it's an allowed domain]",
                 status.as_u16(),
                 final_url
+            )));
+        }
+
+        // A 4xx/5xx is a failed fetch, not a page: returning it as a success
+        // let a blocked or rate-limited site count as research done. (3xx is
+        // handled above and stays a successful "not followed" report.)
+        if status.is_client_error() || status.is_server_error() {
+            let host = host_of(&final_url);
+            log::debug!(
+                "[tool.web_fetch] http error status={} host={host} retry_after_present={}",
+                status.as_u16(),
+                retry_after.is_some()
+            );
+            let excerpt = error_body_excerpt(
+                self.html.as_ref(),
+                &body,
+                content_type.as_deref(),
+                raw_requested,
+            );
+            return Ok(ToolResult::error(http_error_message(
+                status,
+                &host,
+                retry_after.as_deref(),
+                &excerpt,
             )));
         }
 
@@ -298,6 +345,70 @@ impl Tool for WebFetchTool {
         // (`context_manager/history.rs`), which is why a tool there cannot
         // leak an unbounded payload however it misbehaves.
         Ok(ToolResult::success(format!("{header}{content}")))
+    }
+}
+
+/// How much of an error response's body is quoted back to the model.
+const ERROR_EXCERPT_CHARS: usize = 300;
+
+/// The model-facing text for a 4xx/5xx response: what happened, why it
+/// matters, and what to do next, plus a short excerpt of the body.
+fn http_error_message(
+    status: reqwest::StatusCode,
+    host: &str,
+    retry_after: Option<&str>,
+    excerpt: &str,
+) -> String {
+    let code = status.as_u16();
+    let reason = status.canonical_reason().unwrap_or("Unknown Status");
+    let mut msg = format!("HTTP {code} {reason} from {host}; ");
+    match code {
+        429 => {
+            msg.push_str("the site is rate limiting requests.");
+            if let Some(wait) = retry_after.map(str::trim).filter(|w| !w.is_empty()) {
+                msg.push_str(&format!(" Retry-After: {wait}."));
+            }
+            msg.push_str(" Try another source, or retry later.");
+        }
+        401 | 403 => msg.push_str("the site refused the request. Try another source."),
+        404 | 410 => {
+            msg.push_str(
+                "the page does not exist at this URL. Check the URL or try another source.",
+            );
+        }
+        500..=599 => {
+            msg.push_str(
+                "the server failed to handle the request. Retry later or try another source.",
+            );
+        }
+        _ => msg.push_str("the server rejected the request. Try another source."),
+    }
+    if !excerpt.is_empty() {
+        msg.push_str("\nResponse excerpt: ");
+        msg.push_str(excerpt);
+    }
+    msg
+}
+
+/// A short, single-line, text-only excerpt of an error response body.
+///
+/// HTML goes through the host extractor (unless the caller asked for `raw`)
+/// so the model reads the page's words rather than its markup.
+fn error_body_excerpt(
+    extractor: &dyn HtmlExtractor,
+    body: &str,
+    content_type: Option<&str>,
+    raw_requested: bool,
+) -> String {
+    let text = if !raw_requested && is_html(extractor, body, content_type) {
+        extractor.to_markdown(body)
+    } else {
+        body.to_string()
+    };
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    match collapsed.char_indices().nth(ERROR_EXCERPT_CHARS) {
+        Some((cut, _)) => format!("{}...", &collapsed[..cut]),
+        None => collapsed,
     }
 }
 
