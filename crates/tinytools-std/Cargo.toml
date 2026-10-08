@@ -37,7 +37,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 rustix = { version = "1", default-features = false, features = ["fs"] }
 serde_json = { workspace = true }
 # `curl` reports the SHA-256 of what it downloaded.
-sha2 = "0.10"
+sha2 = "0.11"
 tinytools = { path = "../tinytools", version = "0.5.0" }
 # `spawn_blocking` keeps synchronous system DNS resolution off async executor threads;
 # `fs`/`process`/`time` serve the filesystem tools.

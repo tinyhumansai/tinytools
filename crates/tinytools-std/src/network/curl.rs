@@ -11,6 +11,7 @@ use crate::url_guard::{normalize_allowed_domains, validate_url_with_dns_check};
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
+use std::fmt::Write as _;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -351,7 +352,10 @@ impl Tool for CurlTool {
             return Ok(ToolResult::error(format!("Flush failed: {e}")));
         }
 
-        let sha256 = format!("{:x}", hasher.finalize());
+        let mut sha256 = String::with_capacity(64);
+        for byte in hasher.finalize() {
+            let _ = write!(sha256, "{byte:02x}");
+        }
 
         tracing::debug!(
             target: "[curl]",
