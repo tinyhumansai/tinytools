@@ -71,3 +71,68 @@ fn sandbox_negative_exit_code_maps_to_signal() {
     assert_eq!(sandbox_exit_code(0), Some(0));
     assert_eq!(sandbox_exit_code(7), Some(7));
 }
+
+/// A host that wraps commands in `set -o pipefail` turns the commonest idiom
+/// in an agent's toolkit -- a large output piped into an early-closing reader
+/// -- into a failed command. The code alone does not say the requested output
+/// arrived, so the hint has to.
+#[test]
+fn exit_141_explains_that_sigpipe_is_usually_not_a_failure() {
+    let rendered = render_command_failure(Some(141), "first-five-lines", "");
+    assert!(rendered.contains("exit code 141"));
+    assert!(rendered.contains("SIGPIPE"));
+    assert!(
+        rendered.contains("head"),
+        "141 should name the idiom that causes it: {rendered}"
+    );
+    assert!(
+        rendered.contains("treat it as data, not as an error"),
+        "141 should say the output is usable: {rendered}"
+    );
+    assert!(
+        rendered.contains("first-five-lines"),
+        "the accepted output must still be shown: {rendered}"
+    );
+}
+
+/// 137 and 143 are the two ways a long agent run loses a process to the host
+/// rather than to its own exit, and they need opposite responses from 141:
+/// the output is gone or partial, and an unchanged retry repeats the kill.
+#[test]
+fn killed_and_terminated_codes_hint_at_the_host_not_the_command() {
+    let killed = render_command_failure(Some(137), "", "");
+    assert!(killed.contains("SIGKILL"));
+    assert!(
+        killed.contains("out-of-memory") && killed.contains("timeout"),
+        "137 should name both usual causes: {killed}"
+    );
+    let terminated = render_command_failure(Some(143), "half-the-output", "");
+    assert!(terminated.contains("SIGTERM"));
+    assert!(
+        terminated.contains("partial"),
+        "143 should warn the output is incomplete: {terminated}"
+    );
+}
+
+#[test]
+fn exit_139_hints_a_crash_rather_than_a_bad_invocation() {
+    let rendered = render_command_failure(Some(139), "", "");
+    assert!(rendered.contains("SIGSEGV"));
+    assert!(
+        rendered.contains("not in how it was invoked"),
+        "139 should steer away from re-tuning the flags: {rendered}"
+    );
+}
+
+/// The signal hints must not leak into an ordinary application failure, and a
+/// code that merely looks adjacent (140, 142, 138) is not a convention.
+#[test]
+fn adjacent_signal_codes_are_not_editorialised() {
+    for code in [138, 140, 142, 2] {
+        let rendered = render_command_failure(Some(code), "", "boom");
+        assert!(
+            !rendered.contains("SIG"),
+            "exit {code} is not a known convention: {rendered}"
+        );
+    }
+}

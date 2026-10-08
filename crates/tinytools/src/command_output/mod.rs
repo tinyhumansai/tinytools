@@ -27,9 +27,17 @@
 
 use crate::ToolResult;
 
-/// Hint appended after the exit code for the exit statuses that almost always
-/// mean "this exact command cannot succeed on retry here". Empty for every other
-/// code so an ordinary application failure is never editorialised.
+/// Hint appended after the exit code for the exit statuses whose meaning is a
+/// shell convention rather than an application's own choice, so the agent can
+/// tell "cannot succeed on retry" from "did not actually fail" without
+/// guessing. Empty for every other code: an ordinary application failure is
+/// never editorialised.
+///
+/// The `128 + N` codes matter because a host that wraps commands in
+/// `set -o pipefail` reports the *pipeline's* signal death, so the most common
+/// idiom in an agent's toolkit -- piping a large output into an early-closing
+/// reader like `head` -- arrives as a failed command with a bare `141` and no
+/// indication that the requested output was in fact delivered in full.
 fn exit_code_hint(code: i32) -> &'static str {
     match code {
         127 => {
@@ -41,6 +49,31 @@ fn exit_code_hint(code: i32) -> &'static str {
             " — permission denied or not executable: often a sandbox \
                  restriction. This will not succeed on retry — report the blocker \
                  or request escalation instead of repeating the command"
+        }
+        141 => {
+            " — SIGPIPE: a reader closed the pipe before the writer finished, \
+                 which is what `| head`, `| grep -q` and `| sed -n '1,Np'` do \
+                 once they have what they asked for. Under `set -o pipefail` \
+                 that surfaces as a failed pipeline. The output above is \
+                 whatever the reader accepted, and is usually complete for what \
+                 was requested — treat it as data, not as an error, and only \
+                 re-run without the early-closing reader if you need the rest"
+        }
+        137 => {
+            " — SIGKILL: the process was killed rather than exiting, most often \
+                 by the out-of-memory killer or a hard timeout. Retrying the \
+                 same command unchanged will be killed again; reduce what it \
+                 holds in memory, process the input in parts, or raise the limit"
+        }
+        143 => {
+            " — SIGTERM: the process was asked to stop before it finished, \
+                 usually by a timeout or a shutdown. Any output above is \
+                 partial. Re-run with a longer timeout or less work per call"
+        }
+        139 => {
+            " — SIGSEGV: the process crashed. This is a fault in the program or \
+                 its input, not in how it was invoked, so the same command will \
+                 crash again — change the input or use a different tool"
         }
         _ => "",
     }
