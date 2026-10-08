@@ -127,7 +127,11 @@ impl Tool for WebFetchTool {
                 "url": { "type": "string", "description": "Absolute http(s) URL." },
                 "max_bytes": {
                     "type": "integer",
-                    "description": "Truncate body at this many bytes (default 1_000_000).",
+                    "description": "Cap the returned text at this many bytes \
+                     (default 1_000_000). Bounds the OUTPUT — the extracted \
+                     markdown, or the raw body with raw:true — never the markup \
+                     the extractor reads, so lowering it cannot cost you content \
+                     the page actually had.",
                     "minimum": 1
                 },
                 "raw": {
@@ -305,12 +309,6 @@ impl WebFetchTool {
         }
 
         let downloaded = body.len();
-        let (body, byte_capped) = if downloaded > max_bytes {
-            let cut = floor_char_boundary(&body, max_bytes);
-            (body[..cut].to_string(), true)
-        } else {
-            (body, false)
-        };
 
         // Markdown by default. A page's prose is a small fraction of its
         // bytes; handing the raw document to the model (and to the payload
@@ -319,24 +317,26 @@ impl WebFetchTool {
         // content transforms.
         let converted =
             !raw_requested && is_html(self.html.as_ref(), &body, content_type.as_deref());
-        let content = if converted {
-            self.html.to_markdown(&body)
-        } else {
-            body
-        };
+        let rendered = render_body(self.html.as_ref(), body, converted, max_bytes);
 
-        let extracted = content.len();
+        let extracted = rendered.extracted;
         let mut header = format!("status={} url={final_url}", status.as_u16());
         if converted {
             header.push_str(" content=markdown");
         }
-        if byte_capped {
-            header.push_str(&format!(" download_capped_at={max_bytes}B"));
+        // `output_capped_at`, not the old `download_capped_at`: nothing here
+        // ever capped a download — `resp.text()` above materialises the whole
+        // body regardless — and naming it that sent a reader looking in the
+        // wrong place for the content that went missing.
+        if rendered.output_capped {
+            header.push_str(&format!(" output_capped_at={max_bytes}B"));
         }
+        append_markup_truncation_header(&mut header, &rendered);
         if converted && extracted < downloaded {
             header.push_str(&format!(" extracted={extracted}B_of_{downloaded}B"));
         }
         header.push('\n');
+        let content = rendered.content;
 
         // Full extracted content. Bounding it — the head/tail window, the
         // spill to an artifact and the paging handle — belongs to
@@ -409,6 +409,87 @@ fn error_body_excerpt(
     match collapsed.char_indices().nth(ERROR_EXCERPT_CHARS) {
         Some((cut, _)) => format!("{}...", &collapsed[..cut]),
         None => collapsed,
+    }
+}
+
+/// Raw markup handed to the HTML extractor, at most.
+///
+/// Not a byte budget — the caller's `max_bytes` owns that, applied to the
+/// output. This exists only so a pathological document cannot cost unbounded
+/// CPU in `to_markdown`, a cost the old pre-truncation ordering hid by
+/// accident. 8 MiB is ~19x the largest real page measured here (a 434 KB
+/// client-rendered spreadsheet) and ~8x the default `max_response_size`, so no
+/// realistic page reaches it.
+const EXTRACTOR_INPUT_CEILING: usize = 8 * 1024 * 1024;
+
+/// A body turned into what the caller reads.
+struct RenderedBody {
+    /// The text to return, bounded by the caller's `max_bytes`.
+    content: String,
+    /// Length *before* that bound, so the header's ratio describes the
+    /// extraction rather than the truncation.
+    extracted: usize,
+    /// Whether `content` was cut to fit `max_bytes`.
+    output_capped: bool,
+    /// Whether the markup was cut before the extractor saw it, which only
+    /// happens past [`EXTRACTOR_INPUT_CEILING`].
+    markup_truncated: bool,
+}
+
+/// Add the extractor input ceiling to a fetch header when markup was cut.
+fn append_markup_truncation_header(header: &mut String, rendered: &RenderedBody) {
+    if rendered.markup_truncated {
+        header.push_str(&format!(" markup_truncated_at={EXTRACTOR_INPUT_CEILING}B"));
+    }
+}
+
+/// Convert, **then** bound.
+///
+/// The order is the whole of this function. It used to be the other way round,
+/// and the cap was therefore destroying the thing it was meant to measure: a
+/// 432,864-byte client-rendered page fetched with `max_bytes: 50000` was cut at
+/// byte 50,000 — mid-tag, mid-DOM — and the readability pass, handed that
+/// wreckage, recovered only the `<title>`. The result was
+/// `extracted=48B_of_432864B`, reported as `status=200`. The same URL with no
+/// `max_bytes` yields `extracted=37243B_of_433638B`: the real document.
+/// Identical tool, identical extractor, 776x the content, one parameter.
+///
+/// So a caller setting a sensible cost bound silently lost the page, and the
+/// knob it would then reach for — raising the cap — was the right knob turned
+/// too timidly, which is the worst case for learning anything from the failure.
+///
+/// Bounding the output is also what the schema promises, and it costs no
+/// memory: the caller has already materialised the whole body. Only the
+/// extractor's input needs a ceiling, and that is for CPU.
+fn render_body(
+    html: &dyn HtmlExtractor,
+    body: String,
+    converted: bool,
+    max_bytes: usize,
+) -> RenderedBody {
+    let (markup_truncated, body) = if converted && body.len() > EXTRACTOR_INPUT_CEILING {
+        let cut = floor_char_boundary(&body, EXTRACTOR_INPUT_CEILING);
+        (true, body[..cut].to_string())
+    } else {
+        (false, body)
+    };
+    let full = if converted {
+        html.to_markdown(&body)
+    } else {
+        body
+    };
+    let extracted = full.len();
+    let (content, output_capped) = if extracted > max_bytes {
+        let cut = floor_char_boundary(&full, max_bytes);
+        (full[..cut].to_string(), true)
+    } else {
+        (full, false)
+    };
+    RenderedBody {
+        content,
+        extracted,
+        output_capped,
+        markup_truncated,
     }
 }
 

@@ -378,3 +378,127 @@ async fn a_redirect_is_still_reported_as_a_successful_result() {
     assert!(result.output().contains("status=301"));
     assert!(result.output().contains("location=https://example.com/new"));
 }
+
+// --- The cap bounds the output, not the extractor's input ------------------
+//
+// `TestHtml::to_markdown` strips tags, so a document whose prose sits past the
+// cap offset is the shape that discriminates: cutting the markup first loses
+// the prose outright, cutting the rendered text keeps it.
+
+/// Markup whose readable text sits behind `filler` bytes of attribute.
+fn page_with_prose_after(filler: usize) -> String {
+    format!(
+        "<!DOCTYPE html><html><head><title>T</title></head><body>\
+         <div data-pad=\"{}\"></div><p>the prose that matters</p></body></html>",
+        "f".repeat(filler)
+    )
+}
+
+#[test]
+fn the_cap_applies_to_the_extracted_text_not_the_markup() {
+    // The regression this function exists for. A 432,864-byte page fetched at
+    // `max_bytes: 50000` used to come back as `extracted=48B_of_432864B` — the
+    // whole document reduced to its `<title>` — because the markup was cut
+    // mid-DOM before the extractor ever saw it.
+    let body = page_with_prose_after(4_000);
+    assert!(body.len() > 1_000, "the prose must sit past the cap");
+
+    let rendered = render_body(&TestHtml, body, true, 1_000);
+    assert!(
+        rendered.content.contains("the prose that matters"),
+        "cutting the markup first would have lost this: {:?}",
+        rendered.content
+    );
+}
+
+#[test]
+fn cutting_the_markup_first_really_does_destroy_the_extraction() {
+    // The counterfactual, so the test above cannot pass vacuously: the old
+    // ordering, performed by hand, loses the prose from the same document.
+    let body = page_with_prose_after(4_000);
+    let truncated = &body[..1_000];
+    assert!(
+        !TestHtml
+            .to_markdown(truncated)
+            .contains("the prose that matters"),
+        "a pre-extraction cut is what destroyed the content"
+    );
+}
+
+#[test]
+fn the_reported_length_is_the_extraction_not_the_truncation() {
+    // `extracted` is pre-cap on purpose: the header's `extracted=XB_of_YB`
+    // ratio describes how much of the document the extractor found, which is
+    // the number that reveals a collapse. Measuring post-cap would report the
+    // cap back to the caller as if it were the page.
+    let body = page_with_prose_after(4_000);
+    let full = TestHtml.to_markdown(&body);
+    let rendered = render_body(&TestHtml, body, true, 4);
+    assert_eq!(rendered.extracted, full.len());
+    assert!(rendered.output_capped);
+    assert!(rendered.content.len() <= 4);
+}
+
+#[test]
+fn an_output_within_the_cap_is_returned_whole_and_unflagged() {
+    let body = page_with_prose_after(16);
+    let rendered = render_body(&TestHtml, body, true, 1_000_000);
+    assert!(!rendered.output_capped);
+    assert!(!rendered.markup_truncated);
+    assert!(rendered.content.contains("the prose that matters"));
+}
+
+#[test]
+fn markup_truncated_input_is_reported_in_the_fetch_header() {
+    // Drive the body across the extractor's independent input ceiling. The
+    // large attribute keeps extracted text small, while proving that the
+    // extractor input itself was bounded and reported to the caller.
+    let body = format!(
+        "<!DOCTYPE html><html><body><div data-pad=\"{}\"></div><p>visible</p></body></html>",
+        "x".repeat(EXTRACTOR_INPUT_CEILING)
+    );
+    assert!(body.len() > EXTRACTOR_INPUT_CEILING);
+    let rendered = render_body(&TestHtml, body, true, 1_000);
+    assert!(rendered.markup_truncated);
+    let mut output = "status=200 url=https://example.com content=markdown".to_string();
+    append_markup_truncation_header(&mut output, &rendered);
+    assert!(
+        output.contains(&format!("markup_truncated_at={EXTRACTOR_INPUT_CEILING}B")),
+        "header should disclose the extractor input ceiling: {output}"
+    );
+}
+
+#[test]
+fn raw_output_is_bounded_by_the_same_cap() {
+    // With `raw: true` there is no extraction, so the cap applies to the body
+    // itself — the one case where cutting the input and cutting the output are
+    // the same act.
+    let rendered = render_body(&TestHtml, "abcdefghij".to_string(), false, 4);
+    assert_eq!(rendered.content, "abcd");
+    assert!(rendered.output_capped);
+    assert_eq!(rendered.extracted, 10);
+}
+
+#[test]
+fn the_markup_ceiling_is_far_above_any_real_page() {
+    // Sized against the measured worst case, not picked round. A ceiling near
+    // the old default would reintroduce the bug for ordinary documents.
+    const {
+        assert!(EXTRACTOR_INPUT_CEILING >= 8 * 1024 * 1024);
+        assert!(EXTRACTOR_INPUT_CEILING > 433_638 * 10);
+    }
+}
+
+#[test]
+fn the_schema_says_which_side_of_the_extractor_it_bounds() {
+    // The description is a caller's only account of what the knob does, and
+    // the old wording ("Truncate body at this many bytes") is what made
+    // lowering it look free.
+    let tool = fetch(test_security(), vec![], None, None);
+    let schema = tool.parameters_schema();
+    let desc = schema["properties"]["max_bytes"]["description"]
+        .as_str()
+        .expect("max_bytes documents itself");
+    assert!(desc.contains("OUTPUT"), "{desc}");
+    assert!(desc.contains("never the markup"), "{desc}");
+}
