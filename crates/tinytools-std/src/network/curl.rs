@@ -351,7 +351,11 @@ impl Tool for CurlTool {
             return Ok(ToolResult::error(format!("Flush failed: {e}")));
         }
 
-        let sha256 = format!("{:x}", hasher.finalize());
+        let sha256 = hasher
+            .finalize()
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
 
         tracing::debug!(
             target: "[curl]",
