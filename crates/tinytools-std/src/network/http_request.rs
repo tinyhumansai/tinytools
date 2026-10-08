@@ -196,6 +196,7 @@ impl HttpRequestTool {
         let builder = reqwest::Client::builder()
             .timeout(Duration::from_secs(self.timeout_secs))
             .connect_timeout(Duration::from_secs(10))
+            .user_agent(super::gate::USER_AGENT)
             .redirect(reqwest::redirect::Policy::none());
         let builder = self.gate.prepare_client("tool.http_request", builder);
         let client = builder.build()?;

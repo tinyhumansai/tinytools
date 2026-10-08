@@ -12,6 +12,26 @@
 //! already holding, so a host maps its own policy onto it without translating
 //! a vocabulary.
 
+/// What these tools call themselves on the wire.
+///
+/// reqwest sends no `User-Agent` unless told to, and a missing one is not a
+/// cosmetic omission. GitHub's REST API refuses the request outright:
+///
+/// ```text
+/// 403 Request forbidden by administrative rules.
+///     Please make sure your request has a User-Agent header
+/// ```
+///
+/// Reproducible on demand — the same URL in the same second answers 403 with
+/// no header and 200 with one — so every `api.github.com` call through these
+/// tools failed, always, and the 403 was then read as a credentials problem.
+/// Several other APIs require one too, and anonymous traffic is the first a
+/// rate limiter penalises.
+///
+/// Identifying rather than disguised: a server that wants to throttle or block
+/// this traffic should be able to name it.
+pub(super) const USER_AGENT: &str = concat!("tinytools/", env!("CARGO_PKG_VERSION"));
+
 /// The host policy a network tool consults before it acts.
 ///
 /// Implementations must be cheap to call: the tools ask on every invocation.

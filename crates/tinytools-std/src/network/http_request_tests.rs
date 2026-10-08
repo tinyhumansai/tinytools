@@ -601,3 +601,41 @@ fn the_test_gate_builds_a_client_with_the_requested_timeouts() {
     let gate = TestNetGate::supervised();
     let _client = gate.timeout_client("svc", 5, 2);
 }
+
+/// Both network tools must name themselves on the wire.
+///
+/// Not cosmetic: GitHub's REST API answers 403 to a request with no
+/// `User-Agent`, so every `api.github.com` call through these tools failed
+/// until this was set. `serve` records the raw request, which is the only way
+/// to assert an outgoing header actually left the process.
+#[tokio::test]
+async fn an_outgoing_request_carries_a_user_agent() -> anyhow::Result<()> {
+    let (addr, seen) = serve(vec![
+        "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".to_string(),
+    ])
+    .await;
+    let tool = test_tool(vec![]);
+    let _ = tool
+        .execute_request(
+            &format!("http://{addr}/"),
+            reqwest::Method::GET,
+            vec![],
+            None,
+        )
+        .await?;
+
+    let request = seen
+        .lock()
+        .map_err(|error| anyhow::anyhow!("request log mutex poisoned: {error}"))?[0]
+        .clone();
+    let lower = request.to_ascii_lowercase();
+    assert!(
+        lower.contains("user-agent:"),
+        "no User-Agent was sent:\n{request}"
+    );
+    assert!(
+        lower.contains("user-agent: tinytools/"),
+        "the header must identify this crate:\n{request}"
+    );
+    Ok(())
+}

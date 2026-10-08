@@ -11,7 +11,7 @@
 //! budgets or retries on tool errors sees blocked and rate-limited pages for
 //! what they are. 3xx responses are not followed and stay successful reports.
 
-use super::gate::{HttpLimits, NetGate, host_of};
+use super::gate::{HttpLimits, NetGate, USER_AGENT, host_of};
 use crate::url_guard::{normalize_allowed_domains, validate_url_with_dns_check};
 use async_trait::async_trait;
 use serde_json::json;
@@ -241,6 +241,7 @@ impl WebFetchTool {
         // the caller so they can decide whether to refetch the new URL.
         let client = match reqwest::Client::builder()
             .timeout(Duration::from_secs(self.timeout_secs))
+            .user_agent(USER_AGENT)
             .redirect(reqwest::redirect::Policy::none())
             .build()
         {
