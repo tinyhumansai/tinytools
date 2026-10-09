@@ -482,19 +482,23 @@ impl RuleDecision {
         let Some(by) = &self.blocked_by else {
             return format!("Tool '{tool}' is not permitted.");
         };
-        let mut message = format!("Tool '{tool}' is not permitted by tool rules");
-        match (&by.id, by.rule) {
-            (Some(id), _) => message.push_str(&format!(" (rule '{id}')")),
-            (None, Some(index)) => message.push_str(&format!(" (rule #{index})")),
-            (None, None) => message.push_str(" (default deny)"),
-        }
-        if let Some(layer) = &by.layer_name {
-            message.push_str(&format!(" in '{layer}'"));
-        }
-        if let Some(reason) = &by.reason {
-            message.push_str(": ");
-            message.push_str(reason);
-        }
+        let rule = match (&by.id, by.rule) {
+            (Some(id), _) => format!("rule '{id}'"),
+            (None, Some(index)) => format!("rule #{index}"),
+            (None, None) => "default deny".to_string(),
+        };
+        let layer = by
+            .layer_name
+            .as_ref()
+            .map(|layer| format!(" in '{layer}'"))
+            .unwrap_or_default();
+        let reason = by
+            .reason
+            .as_ref()
+            .map(|reason| format!(": {reason}"))
+            .unwrap_or_default();
+        let mut message =
+            format!("Tool '{tool}' is not permitted by tool rules ({rule}){layer}{reason}");
         message.push('.');
         message
     }

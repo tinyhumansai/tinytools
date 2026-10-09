@@ -1,6 +1,8 @@
 //! Behaviour of the rule engine: matching, precedence, surfaces, layering,
 //! indirect targets and the serde representation.
 
+#![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+
 use super::*;
 
 use async_trait::async_trait;
