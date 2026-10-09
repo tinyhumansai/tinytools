@@ -6,7 +6,7 @@
 //! - **Open allowlist** (`allowed_domains` is empty): any public non-private
 //!   host is permitted. All SSRF guards still apply (loopback / RFC1918 /
 //!   link-local / multicast / documentation / shared-address /
-//!   IPv4-mapped IPv6, `localhost` / `*.localhost` / `*.local`).
+//!   IPv4-mapped and transition IPv6, `localhost` / `*.localhost` / `*.local`).
 //! - **Strict allowlist** (`allowed_domains` is non-empty): only the listed
 //!   domains and their subdomains are permitted.
 //!
@@ -452,15 +452,15 @@ pub fn is_non_global_v4(v4: std::net::Ipv4Addr) -> bool {
         || a == 0
 }
 
-/// Whether an IPv6 address is non-global (loopback, ULA, link-local, mapped, ...).
+/// Whether an IPv6 address is non-global, including private IPv4 destinations
+/// embedded in transition addresses.
 pub fn is_non_global_v6(v6: std::net::Ipv6Addr) -> bool {
     let segs = v6.segments();
-    let well_known_nat64_v4 =
-        (segs[0] == 0x0064 && segs[1] == 0xff9b && segs[2] == 0 && segs[3] == 0).then(|| {
-            let [first, second] = segs[6].to_be_bytes();
-            let [third, fourth] = segs[7].to_be_bytes();
-            std::net::Ipv4Addr::new(first, second, third, fourth)
-        });
+    let embedded_v4 = |hi: u16, lo: u16| {
+        let [first, second] = hi.to_be_bytes();
+        let [third, fourth] = lo.to_be_bytes();
+        is_non_global_v4(std::net::Ipv4Addr::new(first, second, third, fourth))
+    };
     v6.is_loopback()
         || v6.is_unspecified()
         || v6.is_multicast()
@@ -472,7 +472,20 @@ pub fn is_non_global_v6(v6: std::net::Ipv6Addr) -> bool {
         // Local-use translation (RFC 8215) and the well-known NAT64 prefix
         // can embed addresses that translate to private IPv4 destinations.
         || (segs[0] == 0x0064 && segs[1] == 0xff9b && segs[2] == 1)
-        || well_known_nat64_v4.is_some_and(is_non_global_v4)
+        || (segs[0] == 0x0064
+            && segs[1] == 0xff9b
+            && segs[2..6] == [0; 4]
+            && embedded_v4(segs[6], segs[7]))
+        // 6to4 carries the destination IPv4 address immediately after 2002::/16.
+        || (segs[0] == 0x2002 && embedded_v4(segs[1], segs[2]))
+        // Teredo carries its server IPv4 address and the client's XOR-obfuscated
+        // IPv4 address. Either may be an internal destination.
+        || (segs[0] == 0x2001
+            && segs[1] == 0
+            && (embedded_v4(segs[2], segs[3])
+                || embedded_v4(!segs[6], !segs[7])))
+        // Deprecated IPv4-compatible addresses put IPv4 in the final 32 bits.
+        || (segs[..6] == [0; 6] && embedded_v4(segs[6], segs[7]))
         || (segs[0] & 0xfff0) == 0x3ff0
         || segs[0] == 0x5f00
         || v6.to_ipv4_mapped().is_some_and(is_non_global_v4)
