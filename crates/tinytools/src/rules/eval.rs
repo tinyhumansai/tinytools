@@ -13,6 +13,11 @@ use super::types::{
 /// Whether `matcher` matches `subject`. `args` is the call's arguments on the
 /// call surface and `None` elsewhere; `optimistic_args` makes an argument
 /// match count as satisfied when there are no arguments to check.
+///
+/// Every string comparison goes through [`Patterns::matches`], which is
+/// [`glob_matches`](super::glob::glob_matches): ASCII case-insensitive. A
+/// deny for `GMAIL_DELETE_*` therefore also refuses `gmail_delete_message`;
+/// changing a name's case cannot sidestep a rule.
 fn matcher_matches(
     matcher: &ToolMatcher,
     subject: &ToolSubject,

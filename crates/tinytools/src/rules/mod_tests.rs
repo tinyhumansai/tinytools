@@ -458,6 +458,28 @@ fn evaluate_call_checks_the_indirect_target() {
 }
 
 #[test]
+fn a_deny_cannot_be_sidestepped_by_changing_the_targets_case() {
+    let set = ToolRuleSet::single(layer(json!({ "rules": [
+        { "id": "no-gmail-delete", "effect": "deny", "match": { "name": "GMAIL_DELETE_*" } },
+    ] })));
+    for action in [
+        "GMAIL_DELETE_EMAIL",
+        "gmail_delete_email",
+        "Gmail_Delete_Email",
+    ] {
+        let decision = set.evaluate_call(&Execute, &ctx(), &json!({ "action": action }));
+        assert!(!decision.callable, "{action} must be refused");
+    }
+    let direct = set.evaluate(
+        &ToolSubject::named("gmail_delete_message"),
+        &ctx(),
+        Surface::Call,
+        None,
+    );
+    assert!(!direct.callable);
+}
+
+#[test]
 fn evaluate_call_reads_the_targets_own_arguments() {
     let set = ToolRuleSet::single(layer(json!({ "rules": [
         { "id": "no-permanent-delete", "effect": "deny",
