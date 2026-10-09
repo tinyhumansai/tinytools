@@ -344,10 +344,10 @@ struct Execute;
 
 #[async_trait]
 impl Tool for Execute {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "composio_execute"
     }
-    fn description(&self) -> &str {
+    fn description(&self) -> &'static str {
         "Runs a connector action."
     }
     fn parameters_schema(&self) -> Value {
