@@ -102,7 +102,10 @@ fn hide_keeps_a_tool_callable() {
     let subject = ToolSubject::named("gmail_send").with_tag("pack:gmail");
     assert!(!decide(&rules, &subject, Surface::Catalog).visible);
     assert!(!decide(&rules, &subject, Surface::Search).visible);
-    assert!(decide(&rules, &subject, Surface::Call).callable);
+    let call = decide(&rules, &subject, Surface::Call);
+    assert!(call.callable);
+    assert!(call.visible, "hide does not apply to the call surface");
+    assert_eq!(call.blocked_by, None);
     assert!(decide(&rules, &ToolSubject::named("shell"), Surface::Catalog).visible);
 }
 
@@ -114,7 +117,10 @@ fn rules_apply_only_on_their_surfaces() {
     let subject = ToolSubject::named("x");
     assert!(decide(&rules, &subject, Surface::Catalog).visible);
     assert!(!decide(&rules, &subject, Surface::Search).visible);
-    assert!(decide(&rules, &subject, Surface::Call).callable);
+    let call = decide(&rules, &subject, Surface::Call);
+    assert!(call.callable);
+    assert!(call.visible, "hide does not apply to the call surface");
+    assert_eq!(call.blocked_by, None);
 }
 
 #[test]
@@ -303,12 +309,15 @@ fn layers_intersect_allowlists() {
 fn permissive_layers_are_skipped() {
     let mut set = ToolRuleSet::new();
     set.push(ToolRules::allow_all());
-    assert!(set.layers.is_empty());
+    assert_eq!(set.layers, Vec::<ToolRules>::new());
     assert!(set.is_permissive());
     set.extend(ToolRuleSet::single(ToolRules::deny_all()));
     assert!(!set.is_permissive());
     assert!(!set.visible(&ToolSubject::named("x"), &ctx(), Surface::Catalog));
-    assert!(ToolRuleSet::from(ToolRules::allow_all()).layers.is_empty());
+    assert_eq!(
+        ToolRuleSet::from(ToolRules::allow_all()).layers,
+        Vec::<ToolRules>::new()
+    );
 }
 
 #[test]

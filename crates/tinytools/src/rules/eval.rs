@@ -244,6 +244,9 @@ impl ToolRules {
                 blocked_by: Some(reference(None)),
             };
         }
+        // `hide` only ever removes from the listing surfaces; a call it
+        // matches is still visible as far as that call is concerned.
+        let hide = hide.filter(|_| surface != Surface::Call);
         RuleDecision {
             visible: hide.is_none(),
             callable: true,

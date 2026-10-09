@@ -113,6 +113,14 @@ impl Tool for Opinionated {
         Some("opinions")
     }
 
+    fn tags(&self) -> Vec<String> {
+        vec!["pack:opinions".into()]
+    }
+
+    fn indirect_target(&self, args: &Value) -> Option<crate::ToolSubject> {
+        args.get("x")?.as_str().map(crate::ToolSubject::named)
+    }
+
     fn is_concurrency_safe(&self, _args: &Value) -> bool {
         true
     }
@@ -210,6 +218,28 @@ fn the_wrapper_does_not_reveal_a_hidden_tool() {
     let tool = wrapped();
     assert_eq!(tool.exposure(), ToolExposure::Hidden);
     assert_eq!(tool.family(), Some("opinions"));
+}
+
+/// Tool rules read these: a wrapper that dropped them would let a tag-based
+/// deny miss, and a dispatcher's real target escape its rules.
+#[test]
+fn the_wrapper_keeps_what_tool_rules_read() {
+    let tool = wrapped();
+    assert_eq!(tool.tags(), ["pack:opinions"]);
+    assert_eq!(
+        tool.indirect_target(&json!({ "x": "GMAIL_DELETE_EMAIL" })),
+        Some(crate::ToolSubject::named("GMAIL_DELETE_EMAIL"))
+    );
+    let rules = crate::ToolRuleSet::single(crate::ToolRules::from_allow_deny(
+        Vec::<String>::new(),
+        ["*_delete_*"],
+    ));
+    let decision = rules.evaluate_call(
+        &tool,
+        &crate::RuleContext::new(),
+        &json!({ "x": "GMAIL_DELETE_EMAIL" }),
+    );
+    assert!(!decision.callable);
 }
 
 /// Dispatch and result handling read these.
