@@ -58,8 +58,7 @@ search, and a wildcard worked in one list but not the next.
 - `ToolRuleSet::evaluate_call(tool, ctx, args)` evaluates the tool with its
   argument-aware permission and, when `Tool::indirect_target` returns an
   `IndirectCall { target, arguments }`, evaluates the target against its own
-  arguments (falling back to the dispatcher's) —
-  the target too.
+  arguments (falling back to the dispatcher's).
 - `Tool` gains two defaulted, descriptive methods: `tags()` and
   `indirect_target(args)`.
 
