@@ -150,10 +150,9 @@ pub use rank::{
 };
 pub use result::{FileData, ImageData, ToolContent, ToolControl, ToolErrorKind, ToolResult};
 pub use rules::{
-    ApprovalDirective, ArgMatcher, DefaultEffect, Patterns, RuleContext, RuleDecision, RuleEffect,
-    IndirectCall, RuleRef, SideEffect, Surface, ToolMatcher, ToolRule, ToolRuleSet, ToolRules,
-    ToolSubject,
-    glob_matches,
+    ApprovalDirective, ArgMatcher, DefaultEffect, IndirectCall, Patterns, RuleContext,
+    RuleDecision, RuleEffect, RuleRef, SideEffect, Surface, ToolMatcher, ToolRule, ToolRuleSet,
+    ToolRules, ToolSubject, glob_matches,
 };
 pub use shared::{SharedTool, owned_belt, share_belt};
 pub use spec::ToolSpec;

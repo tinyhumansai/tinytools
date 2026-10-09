@@ -415,9 +415,8 @@ impl Tool for Execute {
     fn indirect_target(&self, args: &Value) -> Option<IndirectCall> {
         let action = args.get("action")?.as_str()?;
         let toolkit = action.split('_').next()?;
-        let call = IndirectCall::new(
-            ToolSubject::named(action).with_family(toolkit.to_ascii_lowercase()),
-        );
+        let call =
+            IndirectCall::new(ToolSubject::named(action).with_family(toolkit.to_ascii_lowercase()));
         Some(match args.get("arguments") {
             Some(inner) => call.with_arguments(inner.clone()),
             None => call,
@@ -472,8 +471,14 @@ fn evaluate_call_reads_the_targets_own_arguments() {
         )
     };
     let refused = wrapped(true);
-    assert!(!refused.callable, "the envelope does not hide the target's arguments");
-    assert_eq!(refused.blocked_by.expect("blocked").id.as_deref(), Some("no-permanent-delete"));
+    assert!(
+        !refused.callable,
+        "the envelope does not hide the target's arguments"
+    );
+    assert_eq!(
+        refused.blocked_by.expect("blocked").id.as_deref(),
+        Some("no-permanent-delete")
+    );
     assert!(wrapped(false).callable);
     let call = IndirectCall::from(ToolSubject::named("x"));
     assert_eq!(call.arguments, None);

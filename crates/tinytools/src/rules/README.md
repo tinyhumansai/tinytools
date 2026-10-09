@@ -34,8 +34,10 @@ same line `deferral` draws.
 - **`ToolRuleSet`** stacks layers, and every layer must admit a tool. Adding a
   layer can only narrow, so two allowlists intersect.
 - **`ToolRuleSet::evaluate_call`** evaluates a call with the tool's
-  argument-aware permission. When the tool reports an `indirect_target`, it
-  evaluates that target too.
+  argument-aware permission. When the tool reports an `indirect_target`, an
+  `IndirectCall { target, arguments }`, it evaluates that target too. It uses
+  the target's own arguments when the dispatcher wraps them in an envelope, so
+  an argument-scoped rule cannot be sidestepped through the dispatcher.
 
 ## Operational constraints
 
