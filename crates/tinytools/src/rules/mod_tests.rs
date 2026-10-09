@@ -480,6 +480,84 @@ impl Tool for LegacyAlwaysExternal {
     }
 }
 
+struct RefinedComposite;
+
+#[async_trait]
+impl Tool for RefinedComposite {
+    fn name(&self) -> &'static str {
+        "crm"
+    }
+    fn description(&self) -> &'static str {
+        "Reads or writes a CRM record."
+    }
+    fn parameters_schema(&self) -> Value {
+        json!({ "type": "object" })
+    }
+    async fn execute(&self, _args: Value) -> anyhow::Result<ToolResult> {
+        Ok(ToolResult::success("ok"))
+    }
+    fn external_effect(&self) -> bool {
+        true
+    }
+    fn external_effect_with_args(&self, args: &Value) -> bool {
+        args["action"] != "read"
+    }
+}
+
+#[test]
+fn a_per_call_external_effect_supersedes_the_conservative_default() {
+    let set = ToolRuleSet::single(layer(json!({ "rules": [
+        { "effect": "require_approval", "match": { "side_effects": ["external_service"] } },
+    ] })));
+    // Listed: conservatively external.
+    assert!(
+        ToolSubject::of(&RefinedComposite)
+            .side_effects
+            .is_some_and(|e| e.external_service)
+    );
+    // Called: the read refines it away, the write keeps it.
+    let read = set.evaluate_call(&RefinedComposite, &ctx(), &json!({ "action": "read" }));
+    assert_eq!(read.approval, ApprovalDirective::Default);
+    let write = set.evaluate_call(&RefinedComposite, &ctx(), &json!({ "action": "write" }));
+    assert_eq!(write.approval, ApprovalDirective::Required);
+    // A policy that declares the effect explicitly keeps it for every call.
+    let declared = ToolSubject::of_call(&Execute, &json!({ "action": "X_READ" }));
+    assert!(declared.side_effects.is_some_and(|e| e.external_service));
+}
+
+#[test]
+fn tool_subject_pins_its_wire_form() {
+    let subject = ToolSubject {
+        name: "mcp_github_issue_1".into(),
+        family: Some("github".into()),
+        tags: vec!["mcp.server:github".into()],
+        category: Some(ToolCategory::Workflow),
+        exposure: Some(ToolExposure::Deferred),
+        permission: Some(PermissionLevel::Execute),
+        side_effects: Some(ToolSideEffects {
+            external_service: true,
+            ..ToolSideEffects::default()
+        }),
+    };
+    let value = serde_json::to_value(&subject).expect("serialize");
+    assert_eq!(value["name"], "mcp_github_issue_1");
+    assert_eq!(value["family"], "github");
+    assert_eq!(value["tags"], json!(["mcp.server:github"]));
+    assert_eq!(value["category"], "skill");
+    assert_eq!(value["exposure"], "deferred");
+    assert_eq!(value["permission"], "Execute");
+    assert_eq!(value["side_effects"]["external_service"], true);
+    assert_eq!(
+        serde_json::from_value::<ToolSubject>(value).expect("round trip"),
+        subject
+    );
+    // Unknown attributes and empty tags are omitted.
+    assert_eq!(
+        serde_json::to_value(ToolSubject::named("x")).expect("bare"),
+        json!({ "name": "x" })
+    );
+}
+
 #[test]
 fn legacy_external_effect_declarations_reach_rules() {
     let set = ToolRuleSet::single(layer(json!({ "rules": [

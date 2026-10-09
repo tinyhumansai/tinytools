@@ -92,12 +92,18 @@ impl ToolSubject {
 
     /// [`Self::of`], with the permission level and external effect `tool`
     /// declares for `args`.
+    ///
+    /// The per-call answer supersedes the argument-free one, so a composite
+    /// that is conservatively external but refines a read-only call to
+    /// `false` reads as such; an effect the tool's policy declares explicitly
+    /// is kept either way.
     #[must_use]
     pub fn of_call(tool: &dyn Tool, args: &Value) -> Self {
         let mut subject = Self::of(tool);
         subject.permission = Some(tool.permission_level_with_args(args));
+        let declared = tool.policy().side_effects.external_service;
         if let Some(effects) = subject.side_effects.as_mut() {
-            effects.external_service |= tool.external_effect_with_args(args);
+            effects.external_service = declared || tool.external_effect_with_args(args);
         }
         subject
     }
