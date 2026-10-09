@@ -147,7 +147,9 @@ impl ToolRules {
         let mut rules = Self::allow_all();
         if !allow.0.is_empty() {
             rules.default = DefaultEffect::Deny;
-            rules.rules.push(ToolRule::names(RuleEffect::Allow, allow.0));
+            rules
+                .rules
+                .push(ToolRule::names(RuleEffect::Allow, allow.0));
         }
         if !deny.0.is_empty() {
             rules.rules.push(ToolRule::names(RuleEffect::Deny, deny.0));
@@ -326,7 +328,12 @@ impl ToolRuleSet {
     /// connector's generic execute tool aimed at it. Both must be callable,
     /// and approval takes the stricter directive.
     #[must_use]
-    pub fn evaluate_call(&self, tool: &dyn Tool, context: &RuleContext, args: &Value) -> RuleDecision {
+    pub fn evaluate_call(
+        &self,
+        tool: &dyn Tool,
+        context: &RuleContext,
+        args: &Value,
+    ) -> RuleDecision {
         let subject = ToolSubject::of_call(tool, args);
         let direct = self.evaluate(&subject, context, Surface::Call, Some(args));
         match tool.indirect_target(args) {

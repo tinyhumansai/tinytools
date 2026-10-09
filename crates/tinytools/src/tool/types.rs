@@ -17,7 +17,9 @@ use crate::spec::ToolSpec;
 
 /// Whether a tool is advertised directly, discoverable on demand, or kept
 /// internal to a host-owned composite capability.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolExposure {
     /// Include the tool in the model's initial catalogue.

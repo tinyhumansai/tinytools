@@ -274,7 +274,10 @@ impl ToolRule {
 
     /// A rule with `effect` matching tool names against `patterns`.
     #[must_use]
-    pub fn names<S: Into<String>>(effect: RuleEffect, patterns: impl IntoIterator<Item = S>) -> Self {
+    pub fn names<S: Into<String>>(
+        effect: RuleEffect,
+        patterns: impl IntoIterator<Item = S>,
+    ) -> Self {
         let mut rule = Self::new(effect);
         rule.matcher.name = Some(patterns.into_iter().collect());
         rule

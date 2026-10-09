@@ -6,7 +6,9 @@ use super::*;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use crate::{PermissionLevel, Tool, ToolCategory, ToolExposure, ToolPolicy, ToolResult, ToolSideEffects};
+use crate::{
+    PermissionLevel, Tool, ToolCategory, ToolExposure, ToolPolicy, ToolResult, ToolSideEffects,
+};
 
 fn ctx() -> RuleContext {
     RuleContext::new()
@@ -104,7 +106,9 @@ fn hide_keeps_a_tool_callable() {
 
 #[test]
 fn rules_apply_only_on_their_surfaces() {
-    let rules = layer(json!({ "rules": [ { "effect": "deny", "on": ["search"], "match": { "name": "x" } } ] }));
+    let rules = layer(
+        json!({ "rules": [ { "effect": "deny", "on": ["search"], "match": { "name": "x" } } ] }),
+    );
     let subject = ToolSubject::named("x");
     assert!(decide(&rules, &subject, Surface::Catalog).visible);
     assert!(!decide(&rules, &subject, Surface::Search).visible);
@@ -160,10 +164,14 @@ fn permission_bounds_category_exposure_and_effects() {
     assert!(!denies(json!({ "category": ["system"] })));
     assert!(denies(json!({ "exposure": ["deferred"] })));
     assert!(!denies(json!({ "exposure": ["direct", "hidden"] })));
-    assert!(denies(json!({ "side_effects": ["destructive", "payment"] })));
+    assert!(denies(
+        json!({ "side_effects": ["destructive", "payment"] })
+    ));
     assert!(!denies(json!({ "side_effects": ["network"] })));
     assert!(!denies(json!({ "family": "*" })));
-    assert!(denies(json!({ "name": ["x", "p*"], "category": ["skill"] })));
+    assert!(denies(
+        json!({ "name": ["x", "p*"], "category": ["skill"] })
+    ));
 }
 
 #[test]
@@ -174,7 +182,11 @@ fn when_matches_the_context() {
     let shell = ToolSubject::named("shell");
     let telegram = RuleContext::new().with("channel", "telegram");
     let web = RuleContext::new().with("channel", "web");
-    assert!(!rules.evaluate(&shell, &telegram, Surface::Call, None).callable);
+    assert!(
+        !rules
+            .evaluate(&shell, &telegram, Surface::Call, None)
+            .callable
+    );
     assert!(rules.evaluate(&shell, &web, Surface::Call, None).callable);
     assert!(rules.evaluate(&shell, &ctx(), Surface::Call, None).callable);
 }
@@ -196,14 +208,23 @@ fn arg_rules_decide_calls_and_read_listings_safely() {
     assert!(decide(&rules, &execute, Surface::Search).visible);
     let call = |action: &str| {
         rules
-            .evaluate(&execute, &ctx(), Surface::Call, Some(&json!({ "action": action })))
+            .evaluate(
+                &execute,
+                &ctx(),
+                Surface::Call,
+                Some(&json!({ "action": action })),
+            )
             .callable
     };
     assert!(call("GMAIL_SEND_EMAIL"));
     assert!(!call("GMAIL_DELETE_EMAIL"));
     assert!(!call("SLACK_POST"));
     // A call with no arguments supplied cannot satisfy an argument allow.
-    assert!(!rules.evaluate(&execute, &ctx(), Surface::Call, None).callable);
+    assert!(
+        !rules
+            .evaluate(&execute, &ctx(), Surface::Call, None)
+            .callable
+    );
 }
 
 #[test]
@@ -235,7 +256,11 @@ fn require_approval_beats_auto_approve() {
     assert!(send.callable);
     let read = decide(&rules, &ToolSubject::named("read_file"), Surface::Call);
     assert_eq!(read.approval, ApprovalDirective::Waived);
-    let none = decide(&ToolRules::allow_all(), &ToolSubject::named("x"), Surface::Call);
+    let none = decide(
+        &ToolRules::allow_all(),
+        &ToolSubject::named("x"),
+        Surface::Call,
+    );
     assert_eq!(none.approval, ApprovalDirective::Default);
 }
 
@@ -252,13 +277,22 @@ fn approval_directive_strictest_order() {
 #[test]
 fn layers_intersect_allowlists() {
     let set = ToolRuleSet::new()
-        .with_layer(ToolRules::from_allow_deny(["file_*", "shell"], Vec::<String>::new()).named("config"))
-        .with_layer(ToolRules::from_allow_deny(["file_*", "web_*"], Vec::<String>::new()).named("agent"));
+        .with_layer(
+            ToolRules::from_allow_deny(["file_*", "shell"], Vec::<String>::new()).named("config"),
+        )
+        .with_layer(
+            ToolRules::from_allow_deny(["file_*", "web_*"], Vec::<String>::new()).named("agent"),
+        );
     let visible = |name: &str| set.visible(&ToolSubject::named(name), &ctx(), Surface::Catalog);
     assert!(visible("file_read"));
     assert!(!visible("shell"));
     assert!(!visible("web_fetch"));
-    let refused = set.evaluate(&ToolSubject::named("web_fetch"), &ctx(), Surface::Call, None);
+    let refused = set.evaluate(
+        &ToolSubject::named("web_fetch"),
+        &ctx(),
+        Surface::Call,
+        None,
+    );
     let by = refused.blocked_by.expect("blocked");
     assert_eq!((by.layer, by.layer_name.as_deref()), (0, Some("config")));
 }
@@ -278,20 +312,28 @@ fn permissive_layers_are_skipped() {
 #[test]
 fn layer_approval_takes_the_strictest() {
     let set = ToolRuleSet::new()
-        .with_layer(layer(json!({ "rules": [ { "effect": "auto_approve", "match": {} } ] })))
-        .with_layer(layer(json!({ "rules": [ { "effect": "require_approval", "match": { "name": "x" } } ] })));
+        .with_layer(layer(
+            json!({ "rules": [ { "effect": "auto_approve", "match": {} } ] }),
+        ))
+        .with_layer(layer(
+            json!({ "rules": [ { "effect": "require_approval", "match": { "name": "x" } } ] }),
+        ));
     let decision = set.evaluate(&ToolSubject::named("x"), &ctx(), Surface::Call, None);
     assert_eq!(decision.approval, ApprovalDirective::Required);
 }
 
 #[test]
 fn a_hidden_tool_reports_the_hiding_rule_but_stays_callable() {
-    let set = ToolRuleSet::new()
-        .with_layer(layer(json!({ "rules": [ { "id": "quiet", "effect": "hide", "match": { "name": "x" } } ] })));
+    let set = ToolRuleSet::new().with_layer(layer(
+        json!({ "rules": [ { "id": "quiet", "effect": "hide", "match": { "name": "x" } } ] }),
+    ));
     let decision = set.evaluate(&ToolSubject::named("x"), &ctx(), Surface::Catalog, None);
     assert!(!decision.admits(Surface::Catalog));
     assert!(decision.admits(Surface::Call));
-    assert_eq!(decision.blocked_by.expect("hidden").id.as_deref(), Some("quiet"));
+    assert_eq!(
+        decision.blocked_by.expect("hidden").id.as_deref(),
+        Some("quiet")
+    );
 }
 
 // ── tools and indirect targets ────────────────────────────────────────────
@@ -319,7 +361,10 @@ impl Tool for Execute {
         vec!["connector".into()]
     }
     fn permission_level_with_args(&self, args: &Value) -> PermissionLevel {
-        if args["action"].as_str().is_some_and(|a| a.contains("DELETE")) {
+        if args["action"]
+            .as_str()
+            .is_some_and(|a| a.contains("DELETE"))
+        {
             PermissionLevel::Dangerous
         } else {
             PermissionLevel::Write
@@ -361,7 +406,10 @@ fn evaluate_call_checks_the_indirect_target() {
     let call = |action: &str| set.evaluate_call(&Execute, &ctx(), &json!({ "action": action }));
     let refused = call("GMAIL_DELETE_EMAIL");
     assert!(!refused.callable);
-    assert_eq!(refused.blocked_by.expect("blocked").id.as_deref(), Some("no-gmail-delete"));
+    assert_eq!(
+        refused.blocked_by.expect("blocked").id.as_deref(),
+        Some("no-gmail-delete")
+    );
     assert!(call("GMAIL_SEND_EMAIL").callable);
     assert_eq!(call("SLACK_POST").approval, ApprovalDirective::Required);
     // No target in the arguments: only the dispatcher is evaluated.
@@ -373,8 +421,14 @@ fn evaluate_call_uses_the_argument_aware_permission() {
     let set = ToolRuleSet::single(layer(json!({ "rules": [
         { "effect": "deny", "match": { "permission_at_least": "Dangerous" } },
     ] })));
-    assert!(!set.evaluate_call(&Execute, &ctx(), &json!({ "action": "X_DELETE" })).callable);
-    assert!(set.evaluate_call(&Execute, &ctx(), &json!({ "action": "X_SEND" })).callable);
+    assert!(
+        !set.evaluate_call(&Execute, &ctx(), &json!({ "action": "X_DELETE" }))
+            .callable
+    );
+    assert!(
+        set.evaluate_call(&Execute, &ctx(), &json!({ "action": "X_SEND" }))
+            .callable
+    );
 }
 
 // ── refusal text and serde ────────────────────────────────────────────────
@@ -392,9 +446,17 @@ fn refusal_names_the_rule() {
     );
     let anonymous = decide(&rules, &ToolSubject::named("curl"), Surface::Call).refusal("curl");
     assert!(anonymous.contains("(rule #1)"), "{anonymous}");
-    let default = decide(&ToolRules::deny_all(), &ToolSubject::named("x"), Surface::Call).refusal("x");
+    let default = decide(
+        &ToolRules::deny_all(),
+        &ToolSubject::named("x"),
+        Surface::Call,
+    )
+    .refusal("x");
     assert!(default.contains("(default deny)"), "{default}");
-    assert_eq!(RuleDecision::allow().refusal("x"), "Tool 'x' is not permitted.");
+    assert_eq!(
+        RuleDecision::allow().refusal("x"),
+        "Tool 'x' is not permitted."
+    );
 }
 
 #[test]
@@ -408,16 +470,23 @@ fn serde_round_trips_and_pins_the_wire_form() {
                 .on([Surface::Catalog])
                 .when("channel", Patterns::one("web")),
         )
-        .with_rule(ToolRule::new(RuleEffect::Deny).matching(ToolMatcher {
-            family: Some(Patterns::one("slack")),
-            ..ToolMatcher::default()
-        }).except(ToolMatcher {
-            tags: Some(Patterns::one("safe")),
-            ..ToolMatcher::default()
-        }));
+        .with_rule(
+            ToolRule::new(RuleEffect::Deny)
+                .matching(ToolMatcher {
+                    family: Some(Patterns::one("slack")),
+                    ..ToolMatcher::default()
+                })
+                .except(ToolMatcher {
+                    tags: Some(Patterns::one("safe")),
+                    ..ToolMatcher::default()
+                }),
+        );
     let value = serde_json::to_value(&rules).expect("serialize");
     assert_eq!(value["default"], "deny");
-    assert_eq!(value["rules"][0], json!({ "effect": "allow", "match": { "name": "a" } }));
+    assert_eq!(
+        value["rules"][0],
+        json!({ "effect": "allow", "match": { "name": "a" } })
+    );
     assert_eq!(value["rules"][1]["match"]["name"], json!(["b", "c"]));
     assert_eq!(
         value["rules"][2],
@@ -429,7 +498,10 @@ fn serde_round_trips_and_pins_the_wire_form() {
     let set = ToolRuleSet::single(rules);
     let wire = serde_json::to_value(&set).expect("serialize set");
     assert!(wire.is_array());
-    assert_eq!(serde_json::from_value::<ToolRuleSet>(wire).expect("set"), set);
+    assert_eq!(
+        serde_json::from_value::<ToolRuleSet>(wire).expect("set"),
+        set
+    );
 }
 
 #[test]
@@ -443,11 +515,18 @@ fn unknown_matcher_fields_are_rejected() {
 
 #[test]
 fn decision_serializes() {
-    let decision = decide(&ToolRules::deny_all().named("n"), &ToolSubject::named("x"), Surface::Call);
+    let decision = decide(
+        &ToolRules::deny_all().named("n"),
+        &ToolSubject::named("x"),
+        Surface::Call,
+    );
     let value = serde_json::to_value(&decision).expect("serialize");
     assert_eq!(value["callable"], false);
     assert_eq!(value["approval"], "default");
-    assert_eq!(value["blocked_by"], json!({ "layer": 0, "layer_name": "n" }));
+    assert_eq!(
+        value["blocked_by"],
+        json!({ "layer": 0, "layer_name": "n" })
+    );
     let ctx_value = serde_json::to_value(RuleContext::new().with("channel", "web")).expect("ctx");
     assert_eq!(ctx_value, json!({ "channel": "web" }));
     let subject = serde_json::to_value(ToolSubject::named("x").with_tag("t")).expect("subject");
