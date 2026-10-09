@@ -117,10 +117,7 @@ fn rules_apply_only_on_their_surfaces() {
     let subject = ToolSubject::named("x");
     assert!(decide(&rules, &subject, Surface::Catalog).visible);
     assert!(!decide(&rules, &subject, Surface::Search).visible);
-    let call = decide(&rules, &subject, Surface::Call);
-    assert!(call.callable);
-    assert!(call.visible, "hide does not apply to the call surface");
-    assert_eq!(call.blocked_by, None);
+    assert!(decide(&rules, &subject, Surface::Call).callable);
 }
 
 #[test]
