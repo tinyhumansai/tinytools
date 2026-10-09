@@ -340,8 +340,12 @@ impl ToolRuleSet {
         let subject = ToolSubject::of_call(tool, args);
         let direct = self.evaluate(&subject, context, Surface::Call, Some(args));
         match tool.indirect_target(args) {
-            Some(target) => {
-                let indirect = self.evaluate(&target, context, Surface::Call, Some(args));
+            Some(call) => {
+                // The target's own arguments, so an argument-scoped rule reads
+                // the same values as on a direct call of the target.
+                let target_args = call.arguments.as_ref().unwrap_or(args);
+                let indirect =
+                    self.evaluate(&call.target, context, Surface::Call, Some(target_args));
                 combine(direct, indirect)
             }
             None => direct,

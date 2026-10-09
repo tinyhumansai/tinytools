@@ -120,7 +120,7 @@ impl Tool for SharedTool {
         self.0.tags()
     }
 
-    fn indirect_target(&self, args: &Value) -> Option<crate::rules::ToolSubject> {
+    fn indirect_target(&self, args: &Value) -> Option<crate::rules::IndirectCall> {
         self.0.indirect_target(args)
     }
 

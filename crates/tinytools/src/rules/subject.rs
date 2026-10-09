@@ -92,3 +92,45 @@ impl ToolSubject {
         subject
     }
 }
+
+/// The tool a dispatcher's call actually reaches, and the arguments that
+/// tool receives.
+///
+/// Returned by [`Tool::indirect_target`]. A dispatcher that wraps its
+/// target's arguments in an envelope — `{"action": "...", "arguments": {...}}`
+/// — reports the inner arguments here, so an argument-scoped rule written for
+/// the target reads the same values whether the target is called directly or
+/// through the dispatcher. `None` means the target receives the dispatcher's
+/// own arguments unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct IndirectCall {
+    /// The target tool.
+    pub target: ToolSubject,
+    /// The arguments the target receives, when they differ from the
+    /// dispatcher's.
+    pub arguments: Option<Value>,
+}
+
+impl IndirectCall {
+    /// A call of `target` with the dispatcher's own arguments.
+    #[must_use]
+    pub fn new(target: ToolSubject) -> Self {
+        Self {
+            target,
+            arguments: None,
+        }
+    }
+
+    /// Sets the arguments the target receives.
+    #[must_use]
+    pub fn with_arguments(mut self, arguments: Value) -> Self {
+        self.arguments = Some(arguments);
+        self
+    }
+}
+
+impl From<ToolSubject> for IndirectCall {
+    fn from(target: ToolSubject) -> Self {
+        Self::new(target)
+    }
+}

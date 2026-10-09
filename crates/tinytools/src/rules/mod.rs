@@ -69,7 +69,7 @@ mod subject;
 mod types;
 
 pub use glob::glob_matches;
-pub use subject::ToolSubject;
+pub use subject::{IndirectCall, ToolSubject};
 pub use types::{
     ApprovalDirective, ArgMatcher, DefaultEffect, Patterns, RuleContext, RuleDecision, RuleEffect,
     RuleRef, SideEffect, Surface, ToolMatcher, ToolRule, ToolRuleSet, ToolRules,

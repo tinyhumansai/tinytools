@@ -412,10 +412,16 @@ impl Tool for Execute {
             ..ToolSideEffects::default()
         })
     }
-    fn indirect_target(&self, args: &Value) -> Option<ToolSubject> {
+    fn indirect_target(&self, args: &Value) -> Option<IndirectCall> {
         let action = args.get("action")?.as_str()?;
         let toolkit = action.split('_').next()?;
-        Some(ToolSubject::named(action).with_family(toolkit.to_ascii_lowercase()))
+        let call = IndirectCall::new(
+            ToolSubject::named(action).with_family(toolkit.to_ascii_lowercase()),
+        );
+        Some(match args.get("arguments") {
+            Some(inner) => call.with_arguments(inner.clone()),
+            None => call,
+        })
     }
 }
 
@@ -450,6 +456,27 @@ fn evaluate_call_checks_the_indirect_target() {
     assert_eq!(call("SLACK_POST").approval, ApprovalDirective::Required);
     // No target in the arguments: only the dispatcher is evaluated.
     assert!(set.evaluate_call(&Execute, &ctx(), &json!({})).callable);
+}
+
+#[test]
+fn evaluate_call_reads_the_targets_own_arguments() {
+    let set = ToolRuleSet::single(layer(json!({ "rules": [
+        { "id": "no-permanent-delete", "effect": "deny",
+          "match": { "name": "GMAIL_DELETE_*", "arg": { "pointer": "/permanent", "value": "true" } } },
+    ] })));
+    let wrapped = |permanent: bool| {
+        set.evaluate_call(
+            &Execute,
+            &ctx(),
+            &json!({ "action": "GMAIL_DELETE_EMAIL", "arguments": { "permanent": permanent } }),
+        )
+    };
+    let refused = wrapped(true);
+    assert!(!refused.callable, "the envelope does not hide the target's arguments");
+    assert_eq!(refused.blocked_by.expect("blocked").id.as_deref(), Some("no-permanent-delete"));
+    assert!(wrapped(false).callable);
+    let call = IndirectCall::from(ToolSubject::named("x"));
+    assert_eq!(call.arguments, None);
 }
 
 #[test]

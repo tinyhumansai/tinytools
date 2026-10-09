@@ -12,7 +12,7 @@ use crate::naming::{context_detail_from_args, humanize_tool_name};
 use crate::permission::PermissionLevel;
 use crate::policy::ToolPolicy;
 use crate::result::ToolResult;
-use crate::rules::ToolSubject;
+use crate::rules::IndirectCall;
 use crate::spec::ToolSpec;
 
 /// Whether a tool is advertised directly, discoverable on demand, or kept
@@ -222,9 +222,11 @@ pub trait Tool: Send + Sync {
     /// dispatcher, so a rule against the target cannot be sidestepped by
     /// calling it indirectly (see
     /// [`ToolRuleSet::evaluate_call`](crate::ToolRuleSet::evaluate_call)).
+    /// A dispatcher that wraps the target's arguments returns them on the
+    /// [`IndirectCall`] too, so the target's argument-scoped rules apply.
     /// Return `None` when the arguments name no target or the tool is not a
     /// dispatcher — the default.
-    fn indirect_target(&self, _args: &Value) -> Option<ToolSubject> {
+    fn indirect_target(&self, _args: &Value) -> Option<IndirectCall> {
         None
     }
 

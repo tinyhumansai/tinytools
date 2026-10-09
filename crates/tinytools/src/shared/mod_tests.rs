@@ -117,8 +117,10 @@ impl Tool for Opinionated {
         vec!["pack:opinions".into()]
     }
 
-    fn indirect_target(&self, args: &Value) -> Option<crate::ToolSubject> {
-        args.get("x")?.as_str().map(crate::ToolSubject::named)
+    fn indirect_target(&self, args: &Value) -> Option<crate::IndirectCall> {
+        args.get("x")?
+            .as_str()
+            .map(|name| crate::ToolSubject::named(name).into())
     }
 
     fn is_concurrency_safe(&self, _args: &Value) -> bool {
@@ -228,7 +230,7 @@ fn the_wrapper_keeps_what_tool_rules_read() {
     assert_eq!(tool.tags(), ["pack:opinions"]);
     assert_eq!(
         tool.indirect_target(&json!({ "x": "GMAIL_DELETE_EMAIL" })),
-        Some(crate::ToolSubject::named("GMAIL_DELETE_EMAIL"))
+        Some(crate::ToolSubject::named("GMAIL_DELETE_EMAIL").into())
     );
     let rules = crate::ToolRuleSet::single(crate::ToolRules::from_allow_deny(
         Vec::<String>::new(),
