@@ -116,6 +116,14 @@ impl Tool for SharedTool {
         self.0.family()
     }
 
+    fn tags(&self) -> Vec<String> {
+        self.0.tags()
+    }
+
+    fn indirect_target(&self, args: &Value) -> Option<crate::rules::IndirectCall> {
+        self.0.indirect_target(args)
+    }
+
     fn is_concurrency_safe(&self, args: &Value) -> bool {
         self.0.is_concurrency_safe(args)
     }

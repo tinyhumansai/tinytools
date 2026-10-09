@@ -103,6 +103,12 @@ fn the_declaration_defaults_are_the_conservative_answer() {
     assert!(tool.host_call_extension(&Value::Null).is_none());
     assert_eq!(tool.policy(), ToolPolicy::default());
     assert_eq!(tool.injected_arguments().len(), 0);
+    // Tool-rule metadata: no tags, and not a dispatcher to any other tool.
+    assert_eq!(tool.tags(), Vec::<String>::new());
+    assert_eq!(
+        tool.indirect_target(&serde_json::json!({ "action": "x" })),
+        None
+    );
 }
 
 #[tokio::test]

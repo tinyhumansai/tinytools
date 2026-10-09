@@ -12,11 +12,15 @@ use crate::naming::{context_detail_from_args, humanize_tool_name};
 use crate::permission::PermissionLevel;
 use crate::policy::ToolPolicy;
 use crate::result::ToolResult;
+use crate::rules::IndirectCall;
 use crate::spec::ToolSpec;
 
 /// Whether a tool is advertised directly, discoverable on demand, or kept
 /// internal to a host-owned composite capability.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum ToolExposure {
     /// Include the tool in the model's initial catalogue.
     #[default]
@@ -197,6 +201,32 @@ pub trait Tool: Send + Sync {
     /// gates nor routes on it. Most tools have no family and keep the
     /// default.
     fn family(&self) -> Option<&str> {
+        None
+    }
+
+    /// Host-assigned labels a tool rule can match: a toolpack (`pack:gmail`),
+    /// a domain (`domain:web3`), a connector scope (`composio.scope:write`).
+    ///
+    /// Purely descriptive, like [`Self::family`]; a host's
+    /// [`ToolRules`](crate::ToolRules) decide what a tag means. Most tools
+    /// carry none.
+    fn tags(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// The tool this call actually reaches, for a dispatcher tool whose
+    /// arguments name another one: a connector's generic execute tool, a
+    /// skill runner, an MCP call bridge.
+    ///
+    /// A host evaluates its tool rules against the target as well as the
+    /// dispatcher, so a rule against the target cannot be sidestepped by
+    /// calling it indirectly (see
+    /// [`ToolRuleSet::evaluate_call`](crate::ToolRuleSet::evaluate_call)).
+    /// A dispatcher that wraps the target's arguments returns them on the
+    /// [`IndirectCall`] too, so the target's argument-scoped rules apply.
+    /// Return `None` when the arguments name no target or the tool is not a
+    /// dispatcher — the default.
+    fn indirect_target(&self, _args: &Value) -> Option<IndirectCall> {
         None
     }
 

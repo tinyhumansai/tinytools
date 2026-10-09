@@ -31,6 +31,7 @@ crates/
         ├── context/        # `ToolRunContext`
         ├── progress/       # `ToolProgress`, `ProgressSink`
         ├── naming/         # rendering a call for a human
+        ├── rules/          # `ToolRules`: declarative allow/deny/hide/approval rules
         └── shared/         # `SharedTool`: an `Arc<dyn Tool>` as an owned belt entry
                             # each: mod.rs / types.rs / mod_tests.rs
 docs/
