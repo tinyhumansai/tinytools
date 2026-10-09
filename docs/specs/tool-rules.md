@@ -2,6 +2,7 @@
 
 - **Status:** Implemented
 - **Owner:** Maintainers
+- **Plan:** [`../plans/tool-rules.md`](../plans/tool-rules.md)
 
 ## Problem
 
