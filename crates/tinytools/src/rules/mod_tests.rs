@@ -438,6 +438,78 @@ fn subject_of_reads_the_tool_declarations() {
     assert_eq!(call.permission, Some(PermissionLevel::Dangerous));
 }
 
+struct LegacyEffect;
+
+#[async_trait]
+impl Tool for LegacyEffect {
+    fn name(&self) -> &'static str {
+        "send_message"
+    }
+    fn description(&self) -> &'static str {
+        "Sends a message; declares its effect the pre-policy way."
+    }
+    fn parameters_schema(&self) -> Value {
+        json!({ "type": "object" })
+    }
+    async fn execute(&self, _args: Value) -> anyhow::Result<ToolResult> {
+        Ok(ToolResult::success("sent"))
+    }
+    fn external_effect_with_args(&self, args: &Value) -> bool {
+        args["dry_run"].as_bool() != Some(true)
+    }
+}
+
+struct LegacyAlwaysExternal;
+
+#[async_trait]
+impl Tool for LegacyAlwaysExternal {
+    fn name(&self) -> &'static str {
+        "post_webhook"
+    }
+    fn description(&self) -> &'static str {
+        "Posts a webhook."
+    }
+    fn parameters_schema(&self) -> Value {
+        json!({ "type": "object" })
+    }
+    async fn execute(&self, _args: Value) -> anyhow::Result<ToolResult> {
+        Ok(ToolResult::success("posted"))
+    }
+    fn external_effect(&self) -> bool {
+        true
+    }
+}
+
+#[test]
+fn legacy_external_effect_declarations_reach_rules() {
+    let set = ToolRuleSet::single(layer(json!({ "rules": [
+        { "effect": "require_approval", "match": { "side_effects": ["external_service"] } },
+    ] })));
+    // Argument-less declaration: listed and called subjects both see it.
+    let subject = ToolSubject::of(&LegacyAlwaysExternal);
+    assert!(
+        subject
+            .side_effects
+            .is_some_and(|effects| effects.external_service)
+    );
+    assert_eq!(
+        set.evaluate_call(&LegacyAlwaysExternal, &ctx(), &json!({}))
+            .approval,
+        ApprovalDirective::Required
+    );
+    // Argument-aware declaration: decided per call.
+    assert_eq!(
+        set.evaluate_call(&LegacyEffect, &ctx(), &json!({}))
+            .approval,
+        ApprovalDirective::Required
+    );
+    assert_eq!(
+        set.evaluate_call(&LegacyEffect, &ctx(), &json!({ "dry_run": true }))
+            .approval,
+        ApprovalDirective::Default
+    );
+}
+
 #[test]
 fn evaluate_call_checks_the_indirect_target() {
     let set = ToolRuleSet::single(layer(json!({ "rules": [

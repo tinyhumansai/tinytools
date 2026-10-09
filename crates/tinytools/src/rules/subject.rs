@@ -71,8 +71,14 @@ impl ToolSubject {
 
     /// Everything `tool` declares about itself, with its argument-less
     /// permission level.
+    ///
+    /// A tool that declares an outside effect only through the older
+    /// [`Tool::external_effect`] (its policy left unclassified) still reads as
+    /// `external_service`, so a rule on that side effect matches it.
     #[must_use]
     pub fn of(tool: &dyn Tool) -> Self {
+        let mut side_effects = tool.policy().side_effects;
+        side_effects.external_service |= tool.external_effect();
         Self {
             name: tool.name().to_string(),
             family: tool.family().map(str::to_string),
@@ -80,15 +86,19 @@ impl ToolSubject {
             category: Some(tool.category()),
             exposure: Some(tool.exposure()),
             permission: Some(tool.permission_level()),
-            side_effects: Some(tool.policy().side_effects),
+            side_effects: Some(side_effects),
         }
     }
 
-    /// [`Self::of`], with the permission level `tool` declares for `args`.
+    /// [`Self::of`], with the permission level and external effect `tool`
+    /// declares for `args`.
     #[must_use]
     pub fn of_call(tool: &dyn Tool, args: &Value) -> Self {
         let mut subject = Self::of(tool);
         subject.permission = Some(tool.permission_level_with_args(args));
+        if let Some(effects) = subject.side_effects.as_mut() {
+            effects.external_service |= tool.external_effect_with_args(args);
+        }
         subject
     }
 }
