@@ -232,7 +232,7 @@ fn the_wrapper_keeps_what_tool_rules_read() {
     );
     let rules = crate::ToolRuleSet::single(crate::ToolRules::from_allow_deny(
         Vec::<String>::new(),
-        ["*_delete_*"],
+        ["*_DELETE_*"],
     ));
     let decision = rules.evaluate_call(
         &tool,

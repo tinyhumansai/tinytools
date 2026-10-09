@@ -165,8 +165,10 @@ fn permission_bounds_category_exposure_and_effects() {
     assert!(denies(json!({ "permission_at_most": "Write" })));
     assert!(!denies(json!({ "permission_at_most": "ReadOnly" })));
     assert!(denies(json!({ "permission_at_least": "Write" })));
-    assert!(denies(json!({ "category": ["skill"] })));
-    assert!(!denies(json!({ "category": ["system"] })));
+    // Named by value: `ToolCategory::Workflow` serializes as its pinned wire
+    // name `"skill"` (see `category_matches_its_pinned_wire_name`).
+    assert!(denies(json!({ "category": [ToolCategory::Workflow] })));
+    assert!(!denies(json!({ "category": [ToolCategory::System] })));
     assert!(denies(json!({ "exposure": ["deferred"] })));
     assert!(!denies(json!({ "exposure": ["direct", "hidden"] })));
     assert!(denies(
@@ -204,7 +206,7 @@ fn arg_rules_decide_calls_and_read_listings_safely() {
         "default": "deny",
         "rules": [
             { "effect": "allow", "match": { "name": "composio_execute", "arg": { "pointer": "/action", "value": "GMAIL_*" } } },
-            { "effect": "deny", "match": { "arg": { "pointer": "action", "value": "*_DELETE_*" } } },
+            { "effect": "deny", "match": { "arg": { "pointer": "/action", "value": "*_DELETE_*" } } },
         ],
     }));
     let execute = ToolSubject::named("composio_execute");
@@ -230,6 +232,32 @@ fn arg_rules_decide_calls_and_read_listings_safely() {
             .evaluate(&execute, &ctx(), Surface::Call, None)
             .callable
     );
+}
+
+#[test]
+fn category_matches_its_pinned_wire_name() {
+    // Agent definition files on disk spell `Workflow` as "skill".
+    let rules =
+        layer(json!({ "rules": [ { "effect": "deny", "match": { "category": ["skill"] } } ] }));
+    let subject = ToolSubject {
+        category: Some(ToolCategory::Workflow),
+        ..ToolSubject::named("x")
+    };
+    assert!(!decide(&rules, &subject, Surface::Call).callable);
+}
+
+#[test]
+fn arg_matcher_supplies_a_missing_leading_slash() {
+    let bare = ArgMatcher {
+        pointer: "action".into(),
+        value: Patterns::one("GMAIL_*"),
+    };
+    assert!(bare.matches(&json!({ "action": "GMAIL_SEND_EMAIL" })));
+    let root = ArgMatcher {
+        pointer: String::new(),
+        value: Patterns::one("whole"),
+    };
+    assert!(root.matches(&json!("whole")));
 }
 
 #[test]
