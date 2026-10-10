@@ -446,3 +446,28 @@ fn short_and_long_score_answers_do_not_validate() {
         assert!(answer.validate(&request).is_err());
     }
 }
+
+#[tokio::test]
+async fn repeated_blocker_gate_applies_even_to_wrong_tool_classification() {
+    for class in ["transient", "wrong_tool"] {
+        let mut input = observation();
+        input.alternate_reason = Some(RecoveryAlternateReason::RepeatedBlocker);
+        input.repeated_failures = 1;
+        input.candidates.push(JevOption {
+            key: "permitted".into(),
+            description: "Lookup".into(),
+        });
+        let mut stripped = input.clone();
+        stripped.alternate_reason = None;
+        let mut answer = decision(&RecoveryRequest::new(stripped).unwrap());
+        choose(&mut answer, "class", class);
+        let (adviser, _) = adviser(Ok(answer));
+        assert!(matches!(
+            adviser.advise(input).await.unwrap(),
+            RecoveryAdvice::Classified {
+                alternate: None,
+                ..
+            }
+        ));
+    }
+}
