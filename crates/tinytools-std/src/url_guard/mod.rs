@@ -484,11 +484,10 @@ pub fn is_non_global_v6(v6: std::net::Ipv6Addr) -> bool {
             && segs[1] == 0
             && (embedded_v4(segs[2], segs[3])
                 || embedded_v4(!segs[6], !segs[7])))
-        // Deprecated IPv4-compatible addresses put IPv4 in the final 32 bits.
-        || (segs[..6] == [0; 6] && embedded_v4(segs[6], segs[7]))
         || (segs[0] & 0xfff0) == 0x3ff0
         || segs[0] == 0x5f00
-        || v6.to_ipv4_mapped().is_some_and(is_non_global_v4)
+        // `to_ipv4` covers both mapped and deprecated compatible addresses.
+        || v6.to_ipv4().is_some_and(is_non_global_v4)
 }
 
 #[cfg(test)]
