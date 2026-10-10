@@ -37,9 +37,11 @@ pub(super) fn decision(request: &RecoveryRequest) -> RecoveryDecision {
                         .map(|option| {
                             (
                                 option.key.clone(),
-                                f64::from(
-                                    option.key == if id == "class" { "transient" } else { "none" },
-                                ),
+                                if option.key == if id == "class" { "transient" } else { "none" } {
+                                    1.0
+                                } else {
+                                    0.0
+                                },
                             )
                         })
                         .collect(),
@@ -89,7 +91,7 @@ pub(super) fn adviser(result: Result<RecoveryDecision, ()>) -> (RecoveryAdviser,
 pub(super) fn choose(answer: &mut RecoveryDecision, id: &str, key: &str) {
     if let Some(RecoveryAnswer::Choice { probabilities, .. }) = answer.answers.get_mut(id) {
         for (option, value) in probabilities {
-            *value = f64::from(option == key);
+            *value = if option == key { 1.0 } else { 0.0 };
         }
     }
 }

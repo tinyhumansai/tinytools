@@ -500,3 +500,71 @@ fn interpreter_rejects_under_threshold_blockers_even_when_class_is_wrong_tool() 
         );
     }
 }
+
+#[derive(Debug)]
+struct BoundaryEvaluator {
+    class: RecoveryClass,
+    count: u32,
+}
+#[async_trait::async_trait]
+impl RecoveryEvaluator for BoundaryEvaluator {
+    async fn evaluate(&self, request: &RecoveryRequest) -> Result<RecoveryDecision, RankError> {
+        assert_eq!(
+            request.questions.iter().any(|q| q.id() == "alternate"),
+            self.count >= 2
+        );
+        let mut answer = decision(request);
+        choose(&mut answer, "class", self.class.key());
+        if matches!(
+            self.class,
+            RecoveryClass::Authentication | RecoveryClass::Permission | RecoveryClass::Unsupported
+        ) {
+            answer
+                .answers
+                .insert("recoverability".into(), RecoveryAnswer::Noul(0.0));
+        }
+        if self.count < 2 {
+            answer.answers.insert(
+                "alternate".into(),
+                RecoveryAnswer::Choice {
+                    probabilities: [("none".into(), 0.0), ("permitted".into(), 1.0)]
+                        .into_iter()
+                        .collect(),
+                    confidence: 0.9,
+                },
+            );
+        }
+        Ok(answer)
+    }
+}
+#[tokio::test]
+async fn public_blocker_boundary_is_independent_of_every_predicted_class() {
+    for class in RecoveryClass::ALL {
+        for count in [1, 2, 3] {
+            let mut input = observation();
+            input.alternate_reason = Some(RecoveryAlternateReason::RepeatedBlocker);
+            input.repeated_failures = count;
+            input.candidates.push(JevOption {
+                key: "permitted".into(),
+                description: "Lookup".into(),
+            });
+            let adviser =
+                RecoveryAdviser::new(Arc::new(BoundaryEvaluator { class, count }), thresholds())
+                    .unwrap();
+            let advice = adviser.advise(input).await.unwrap();
+            if count < 2 {
+                assert_eq!(
+                    advice,
+                    RecoveryAdvice::Abstained(RecoveryAbstention::InvalidDecision)
+                );
+            }
+            assert!(!matches!(
+                advice,
+                RecoveryAdvice::Classified {
+                    alternate: Some(_),
+                    ..
+                }
+            ));
+        }
+    }
+}
