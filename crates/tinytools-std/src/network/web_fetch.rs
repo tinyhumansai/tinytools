@@ -53,21 +53,32 @@ pub trait AsyncHtmlExtractor: std::fmt::Debug + Send + Sync {
 #[derive(Debug)]
 enum HtmlProvider {
     Local(Arc<dyn HtmlExtractor>),
-    Async(Arc<dyn AsyncHtmlExtractor>),
+    Async {
+        extractor: Arc<dyn AsyncHtmlExtractor>,
+        timeout: Duration,
+    },
 }
 
 impl HtmlProvider {
     async fn looks_like_html(&self, body: &str) -> anyhow::Result<bool> {
         match self {
             Self::Local(html) => Ok(html.looks_like_html(body)),
-            Self::Async(html) => html.looks_like_html(body).await,
+            Self::Async { extractor, timeout } => {
+                tokio::time::timeout(*timeout, extractor.looks_like_html(body))
+                    .await
+                    .map_err(|_| anyhow::anyhow!("HTML detection timed out"))?
+            }
         }
     }
 
     async fn to_markdown(&self, body: &str) -> anyhow::Result<String> {
         match self {
             Self::Local(html) => Ok(html.to_markdown(body)),
-            Self::Async(html) => html.to_markdown(body).await,
+            Self::Async { extractor, timeout } => {
+                tokio::time::timeout(*timeout, extractor.to_markdown(body))
+                    .await
+                    .map_err(|_| anyhow::anyhow!("HTML extraction timed out"))?
+            }
         }
     }
 }
@@ -108,7 +119,8 @@ impl WebFetchTool {
     /// A `web_fetch` tool with asynchronous HTML detection and extraction.
     ///
     /// Limits and raw-response handling match [`Self::new`]. Extraction errors
-    /// propagate without invoking another provider.
+    /// propagate without invoking another provider. Both asynchronous detection
+    /// and conversion are bounded by the configured request timeout.
     #[must_use]
     pub fn new_async(
         gate: Arc<dyn NetGate>,
@@ -124,7 +136,14 @@ impl WebFetchTool {
             max_bytes,
             timeout_secs,
             defaults,
-            HtmlProvider::Async(html),
+            HtmlProvider::Async {
+                extractor: html,
+                timeout: Duration::from_secs(
+                    timeout_secs
+                        .filter(|&seconds| seconds != 0)
+                        .unwrap_or(defaults.timeout_secs),
+                ),
+            },
         )
     }
 

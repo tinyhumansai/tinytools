@@ -644,3 +644,61 @@ async fn raw_and_explicit_non_html_responses_do_not_call_the_remote_provider() {
         assert!(!result.output().contains("content=markdown"));
     }
 }
+
+#[derive(Debug)]
+struct PendingHtml;
+
+#[async_trait]
+impl AsyncHtmlExtractor for PendingHtml {
+    async fn looks_like_html(&self, _body: &str) -> anyhow::Result<bool> {
+        std::future::pending().await
+    }
+
+    async fn to_markdown(&self, _body: &str) -> anyhow::Result<String> {
+        std::future::pending().await
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn pending_remote_detection_and_extraction_are_bounded() {
+    let tool = WebFetchTool::new_async(
+        test_security(),
+        vec![],
+        None,
+        Some(2),
+        DEFAULT_LIMITS,
+        Arc::new(PendingHtml),
+    );
+    let error = is_html(&tool.html, "<html>body</html>", None)
+        .await
+        .unwrap_err();
+    assert_eq!(error.to_string(), "HTML detection timed out");
+    let error = render_body(&tool.html, "<p>body</p>".into(), true, 1_000)
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.to_string(), "HTML extraction timed out");
+    // Error-response excerpts are governed by the same provider deadline.
+    let error = error_body_excerpt(&tool.html, "<p>body</p>", Some("text/html"), false)
+        .await
+        .unwrap_err();
+    assert_eq!(error.to_string(), "HTML extraction timed out");
+}
+
+#[test]
+fn remote_provider_timeout_uses_the_same_zero_and_none_defaults_as_http() {
+    for configured in [Some(0), None, Some(7)] {
+        let tool = WebFetchTool::new_async(
+            test_security(),
+            vec![],
+            None,
+            configured,
+            DEFAULT_LIMITS,
+            Arc::new(PendingHtml),
+        );
+        let HtmlProvider::Async { timeout, .. } = tool.html else {
+            panic!("expected remote provider")
+        };
+        assert_eq!(timeout, Duration::from_secs(tool.timeout_secs));
+    }
+}
