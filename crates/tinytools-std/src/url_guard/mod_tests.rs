@@ -356,6 +356,58 @@ fn blocks_nat64_translation_prefixes() {
 }
 
 #[test]
+fn classifies_well_known_nat64_embedded_addresses() {
+    assert!(is_private_or_local_host("64:ff9b::a00:1"));
+    assert!(is_private_or_local_host("64:ff9b::7f00:1"));
+    assert!(is_private_or_local_host("64:ff9b::c633:6401"));
+    assert!(!is_private_or_local_host("64:ff9b::808:808"));
+    // This is outside the exact /96 translation prefix.
+    assert!(!is_private_or_local_host("64:ff9b:0:0:0:1:a00:1"));
+}
+
+#[test]
+fn classifies_6to4_embedded_destinations() {
+    assert!(is_private_or_local_host("2002:a00:1::"));
+    assert!(is_private_or_local_host("2002:7f00:1::"));
+    assert!(!is_private_or_local_host("2002:808:808::"));
+}
+
+#[test]
+fn classifies_teredo_client_address_without_rejecting_server_address() {
+    // The last two segments are the client's IPv4 address with every bit inverted.
+    assert!(is_private_or_local_host("2001:0:808:808:0:0:f5ff:fffe"));
+    // The server is not the IPv4 destination represented by this endpoint.
+    assert!(!is_private_or_local_host("2001:0:a00:1:0:0:f7f7:f7f7"));
+    assert!(!is_private_or_local_host("2001:0:808:808:0:0:fefe:fefe"));
+}
+
+#[test]
+fn classifies_mapped_and_compatible_ipv4_addresses() {
+    assert!(is_private_or_local_host("::ffff:10.0.0.1"));
+    assert!(!is_private_or_local_host("::ffff:8.8.8.8"));
+    assert!(is_private_or_local_host("::10.0.0.1"));
+    assert!(!is_private_or_local_host("::8.8.8.8"));
+}
+
+#[tokio::test]
+async fn dns_check_rejects_private_ipv4_inside_transition_address() -> anyhow::Result<()> {
+    let err = validate_url_with_dns_check_with_resolver("https://example.com", &[], |_, _| async {
+        Ok(vec!["2002:a00:1::".parse()?])
+    })
+    .await
+    .rejection()?;
+    assert!(err.contains("DNS rebinding blocked"));
+
+    let allowed =
+        validate_url_with_dns_check_with_resolver("https://example.com", &[], |_, _| async {
+            Ok(vec!["2002:808:808::".parse()?])
+        })
+        .await?;
+    assert_eq!(allowed.addrs[0].ip().to_string(), "2002:808:808::");
+    Ok(())
+}
+
+#[test]
 fn allows_public_ipv6() {
     assert!(!is_private_or_local_host("2607:f8b0:4004:800::200e"));
 }

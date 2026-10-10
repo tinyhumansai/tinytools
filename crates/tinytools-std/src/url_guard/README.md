@@ -23,7 +23,10 @@ hostname for TLS SNI and the Host header. Validate every redirect destination
 before following it.
 
 The guard rejects loopback, private, link-local, multicast, documentation,
-shared-address, local names, IPv4-mapped IPv6, and NAT64 translation prefixes.
+shared-address, local names, IPv4-mapped and IPv4-compatible IPv6, private
+IPv4 destinations embedded in NAT64 and 6to4 addresses, private Teredo client
+addresses, and NAT64 translation prefixes. A Teredo server address is not the
+IPv4 destination represented by the endpoint.
 Its lexical checks reject userinfo, backslashes, percent-encoded hosts, and
 IPv6 URL literals because downstream URL parsers can interpret those forms
 differently. This crate supplies no HTTP transport, so connection pinning and
