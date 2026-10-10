@@ -67,6 +67,12 @@ fn removes_many_fences_after_a_long_prefix_without_losing_spliced_matches() {
 }
 
 #[test]
+fn removes_fences_formed_across_arbitrarily_nested_removed_tokens() {
+    let input = format!("{}<system>{}", "<sys".repeat(7), "tem>".repeat(7));
+    assert_eq!(strip_instruction_fences(&input), "");
+}
+
+#[test]
 fn preserves_benign_text_that_merely_mentions_the_words() {
     let input = "Returns the system uptime in seconds.";
     assert_eq!(strip_instruction_fences(input), input);

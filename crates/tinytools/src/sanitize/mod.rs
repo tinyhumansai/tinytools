@@ -37,7 +37,7 @@ const TRUNCATION_SUFFIX: &str = "\u{2026}"; // single-codepoint ellipsis
 /// Matched case-insensitively. The list is intentionally narrow — these are
 /// markers with no legitimate place in a free-form natural-language tool
 /// description. Every entry is ASCII and lowercase, which
-/// [`strip_instruction_fences`] relies on; `test::fence_tokens_are_ascii_and_lowercase`
+/// [`strip_instruction_fences`] relies on; `tests::fence_tokens_are_ascii_and_lowercase`
 /// enforces it.
 const INSTRUCTION_FENCE_TOKENS: &[&str] = &[
     "<|im_start|>",
@@ -99,13 +99,13 @@ pub fn strip_control_chars(input: &str) -> String {
 ///
 /// # Implementation note
 ///
-/// The search runs over the **original** bytes rather than a lowercased copy.
-/// Lowercasing is not length-preserving in Unicode — `İ` (U+0130, two bytes)
-/// lowercases to two codepoints totalling three — so a byte offset found in a
-/// lowercased string can land mid-codepoint in the original. Splicing at such
-/// an offset would corrupt the string or panic. Because every token this scans
-/// for is ASCII, an ASCII-case-insensitive scan of the original is both exactly
-/// equivalent for the tokens that matter and immune to that class of bug.
+/// The scan uses the original output rather than a lowercased copy. Lowercasing
+/// is not length-preserving in Unicode — `İ` (U+0130, two bytes) lowercases to
+/// two codepoints totalling three — so offsets from a lowercased string can
+/// land mid-codepoint in the original. Since all tokens are ASCII, checking
+/// the output suffix directly avoids that problem. Removing a marker may expose
+/// another marker at the suffix; checking after each character catches
+/// arbitrarily nested joins without rescanning accumulated output.
 ///
 /// # Examples
 ///
@@ -116,66 +116,28 @@ pub fn strip_control_chars(input: &str) -> String {
 /// ```
 #[must_use]
 pub fn strip_instruction_fences(input: &str) -> String {
-    let mut pending = String::new();
     let mut out = String::with_capacity(input.len());
-    let pending_limit = INSTRUCTION_FENCE_TOKENS
-        .iter()
-        .map(|token| token.len())
-        .max()
-        .unwrap_or(0)
-        * 2;
     for ch in input.chars() {
-        pending.push(ch);
-        loop {
-            if let Some((start, end)) = find_instruction_fence(&pending) {
-                pending.replace_range(start..end, "");
-                continue;
-            }
-
-            // Keep enough lookahead for a possible prefix before a complete
-            // token to join with text after that token is removed. The buffer
-            // stays bounded by twice the longest token.
-            let mut flush = pending.len().saturating_sub(pending_limit);
-            while flush > 0 && !pending.is_char_boundary(flush) {
-                flush -= 1;
-            }
-            if flush > 0 {
-                out.push_str(&pending[..flush]);
-                pending.drain(..flush);
-            }
-            break;
+        out.push(ch);
+        while let Some(token_len) = instruction_fence_ending_at(&out) {
+            out.truncate(out.len() - token_len);
         }
     }
-    out.push_str(&pending);
     out
 }
 
-/// Finds the earliest complete fence token in the bounded pending buffer.
-fn find_instruction_fence(input: &str) -> Option<(usize, usize)> {
+/// Returns the length of a fence token ending at the current output suffix.
+fn instruction_fence_ending_at(input: &str) -> Option<usize> {
+    let bytes = input.as_bytes();
     INSTRUCTION_FENCE_TOKENS
         .iter()
         .filter_map(|token| {
-            find_ascii_case_insensitive(input, token).map(|start| (start, start + token.len()))
+            let token = token.as_bytes();
+            (bytes.len() >= token.len()
+                && bytes[bytes.len() - token.len()..].eq_ignore_ascii_case(token))
+            .then_some(token.len())
         })
-        .min_by_key(|(start, _)| *start)
-}
-
-/// Returns the byte offset of the first ASCII-case-insensitive occurrence of
-/// `needle` in `haystack`.
-///
-/// `needle` must be ASCII. Because the comparison is byte-wise against ASCII,
-/// a match can only begin at a UTF-8 character boundary: every byte of a
-/// multi-byte sequence has its high bit set and so can never equal an ASCII
-/// byte. The returned offset is therefore always safe to slice at.
-fn find_ascii_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
-    let haystack = haystack.as_bytes();
-    let needle = needle.as_bytes();
-    if needle.is_empty() || needle.len() > haystack.len() {
-        return None;
-    }
-    haystack
-        .windows(needle.len())
-        .position(|window| window.eq_ignore_ascii_case(needle))
+        .max()
 }
 
 /// Truncates `input` to at most `max_bytes` bytes, including the ellipsis
@@ -247,4 +209,4 @@ pub fn sanitize_for_llm(input: &str, max_bytes: usize) -> String {
 
 #[cfg(test)]
 #[path = "mod_tests.rs"]
-mod test;
+mod tests;

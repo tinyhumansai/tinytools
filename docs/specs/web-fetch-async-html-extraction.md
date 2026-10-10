@@ -25,17 +25,21 @@ particular extractor or runtime implementation.
 - Extractor failures and timeouts propagate as tool errors. The tool does not
   retry, fall back to another extractor, or return the unconverted markup as
   successful output.
-- The output byte cap applies after extraction to returned Markdown. For raw
-  responses, it applies to the returned response body. It does not truncate
-  extractor input before conversion.
+- The `max_bytes` output cap applies after extraction to returned Markdown.
+  For raw responses, it applies to the returned response body.
+- Converted markup has a separate built-in 8 MiB UTF-8-safe input ceiling
+  before extraction. When this ceiling truncates a response, `web_fetch`
+  includes `markup_truncated_at=8388608B` in its result header. Raising
+  `max_bytes` does not raise this extractor-input ceiling.
 - URL validation, domain policy, HTTP status handling, and raw-response
   behavior are otherwise shared with the synchronous constructor.
 
 ## Operational limits
 
-The per-operation timeout bounds elapsed time but does not impose a memory or
-CPU input ceiling on the extractor. Hosts that accept large pages should apply
-their own request-body and resource limits at the network boundary.
+The per-operation timeout bounds elapsed time but does not replace host-side
+network and resource policy. The built-in markup ceiling bounds extractor
+input; hosts that require a smaller budget should enforce it at the network
+boundary.
 
 ## Related plan
 
