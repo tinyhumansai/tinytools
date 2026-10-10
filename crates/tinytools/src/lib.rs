@@ -39,6 +39,8 @@
 //! - [`rank`] — [`ToolRanker`], ranking a catalogue of tools against an
 //!   intent, and the lexical [`Bm25Ranker`] every host gets for free.
 //!
+//! - [`sanitize`] — shared lexical sanitization for untrusted metadata.
+//!
 //! # What is deliberately not here
 //!
 //! **No enforcement.** Nothing in this crate checks a [`PermissionLevel`],
@@ -117,6 +119,7 @@ pub mod progress;
 pub mod rank;
 pub mod result;
 pub mod rules;
+pub mod sanitize;
 pub mod shared;
 pub mod spec;
 pub mod tool;
