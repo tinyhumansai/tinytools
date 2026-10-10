@@ -1,6 +1,6 @@
 # Shared metadata sanitization
 
-`tinytools::sanitize` provides lexical text helpers usable without a runtime or
+`tinytools_std::sanitize` provides lexical text helpers usable without a runtime or
 MCP module: `strip_control_chars`, `strip_instruction_fences`,
 `truncate_utf8_safe` and their combined `sanitize_for_llm` pipeline.
 

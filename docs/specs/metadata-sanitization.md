@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted behavior for the shared `tinytools::sanitize` text pipeline.
+Accepted behavior for the shared `tinytools_std::sanitize` text pipeline.
 
 ## Contract
 

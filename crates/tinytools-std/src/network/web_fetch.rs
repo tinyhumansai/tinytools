@@ -507,8 +507,9 @@ async fn error_body_excerpt(
     content_type: Option<&str>,
     raw_requested: bool,
 ) -> anyhow::Result<String> {
-    let text = if !raw_requested && is_html(extractor, body, content_type).await? {
-        extractor.to_markdown(body).await?
+    let (bounded_body, _) = cap_extractor_input(body);
+    let text = if !raw_requested && is_html(extractor, bounded_body, content_type).await? {
+        extractor.to_markdown(bounded_body).await?
     } else {
         body.to_string()
     };
@@ -574,9 +575,9 @@ async fn render_body(
     converted: bool,
     max_bytes: usize,
 ) -> anyhow::Result<RenderedBody> {
-    let (markup_truncated, body) = if converted && body.len() > EXTRACTOR_INPUT_CEILING {
-        let cut = floor_char_boundary(&body, EXTRACTOR_INPUT_CEILING);
-        (true, body[..cut].to_string())
+    let (markup_truncated, body) = if converted {
+        let (body, truncated) = cap_extractor_input(&body);
+        (truncated, body.to_string())
     } else {
         (false, body)
     };
@@ -598,6 +599,16 @@ async fn render_body(
         output_capped,
         markup_truncated,
     })
+}
+
+/// Bound every body before it crosses into a host supplied extractor.
+fn cap_extractor_input(body: &str) -> (&str, bool) {
+    if body.len() > EXTRACTOR_INPUT_CEILING {
+        let cut = floor_char_boundary(body, EXTRACTOR_INPUT_CEILING);
+        (&body[..cut], true)
+    } else {
+        (body, false)
+    }
 }
 
 /// The largest index at or below `index` that is a char boundary of `s`.
@@ -632,6 +643,7 @@ async fn is_html(
             return Ok(true);
         }
     }
+    let (body, _) = cap_extractor_input(body);
     extractor.looks_like_html(body).await
 }
 

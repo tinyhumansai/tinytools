@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::network::test_support::{DEFAULT_LIMITS, TestHtml, TestNetGate};
+use std::sync::Mutex;
 
 fn test_security() -> Arc<TestNetGate> {
     TestNetGate::supervised()
@@ -683,6 +684,53 @@ async fn pending_remote_detection_and_extraction_are_bounded() {
         .await
         .unwrap_err();
     assert_eq!(error.to_string(), "HTML extraction timed out");
+}
+
+#[derive(Debug)]
+struct InputLengthHtml(Arc<Mutex<Vec<usize>>>);
+
+#[async_trait]
+impl AsyncHtmlExtractor for InputLengthHtml {
+    async fn looks_like_html(&self, body: &str) -> anyhow::Result<bool> {
+        self.0.lock().unwrap().push(body.len());
+        Ok(true)
+    }
+
+    async fn to_markdown(&self, body: &str) -> anyhow::Result<String> {
+        self.0.lock().unwrap().push(body.len());
+        Ok(String::new())
+    }
+}
+
+#[tokio::test]
+async fn every_remote_extractor_call_receives_at_most_the_input_ceiling() {
+    let lengths = Arc::new(Mutex::new(Vec::new()));
+    let extractor = HtmlProvider::Async {
+        extractor: Arc::new(InputLengthHtml(lengths.clone())),
+        timeout: Duration::from_secs(1),
+    };
+    let body = "x".repeat(EXTRACTOR_INPUT_CEILING + 1);
+
+    // Missing Content-Type takes the remote detection path.
+    assert!(is_html(&extractor, &body, None).await.unwrap());
+    // Error bodies can call detection and extraction directly.
+    error_body_excerpt(&extractor, &body, None, false)
+        .await
+        .unwrap();
+    // An explicit HTML error response skips detection but still caps extraction.
+    error_body_excerpt(&extractor, &body, Some("text/html"), false)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        *lengths.lock().unwrap(),
+        vec![
+            EXTRACTOR_INPUT_CEILING,
+            EXTRACTOR_INPUT_CEILING,
+            EXTRACTOR_INPUT_CEILING,
+            EXTRACTOR_INPUT_CEILING,
+        ]
+    );
 }
 
 #[test]

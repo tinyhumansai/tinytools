@@ -73,7 +73,7 @@ const INSTRUCTION_FENCE_TOKENS: &[&str] = &[
 /// # Examples
 ///
 /// ```
-/// # use tinytools::sanitize::strip_control_chars;
+/// # use tinytools_std::sanitize::strip_control_chars;
 /// assert_eq!(strip_control_chars("a\x00b\nc"), "ab\nc");
 /// ```
 #[must_use]
@@ -110,7 +110,7 @@ pub fn strip_control_chars(input: &str) -> String {
 /// # Examples
 ///
 /// ```
-/// # use tinytools::sanitize::strip_instruction_fences;
+/// # use tinytools_std::sanitize::strip_instruction_fences;
 /// assert_eq!(strip_instruction_fences("<SYSTEM>hi</system>"), "hi");
 /// assert_eq!(strip_instruction_fences("system uptime"), "system uptime");
 /// ```
@@ -152,7 +152,7 @@ fn instruction_fence_ending_at(input: &str) -> Option<usize> {
 /// # Examples
 ///
 /// ```
-/// # use tinytools::sanitize::truncate_utf8_safe;
+/// # use tinytools_std::sanitize::truncate_utf8_safe;
 /// assert_eq!(truncate_utf8_safe("hello", 32), "hello");
 /// assert_eq!(truncate_utf8_safe("hello world", 8), "hello\u{2026}");
 /// ```
@@ -196,7 +196,7 @@ fn floor_char_boundary(input: &str, index: usize) -> usize {
 /// # Examples
 ///
 /// ```
-/// # use tinytools::sanitize::{sanitize_for_llm};
+/// # use tinytools_std::sanitize::{sanitize_for_llm};
 /// let clean = sanitize_for_llm("Returns the current weather.", 1024);
 /// assert_eq!(clean, "Returns the current weather.");
 /// ```
