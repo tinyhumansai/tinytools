@@ -126,7 +126,7 @@ impl RecoveryDecision {
                         confidence,
                     }),
                 ) => {
-                    !rubric.is_empty()
+                    rubric.len() == 3
                         && probability(*confidence)
                         && probabilities.len() == rubric.len()
                         && distribution(probabilities.iter())
@@ -223,24 +223,30 @@ pub(super) fn advice(
             None
         } else {
             if prerequisites
-                || *recoverability < thresholds.recoverability
                 || (request.observation.alternate_reason
                     == Some(RecoveryAlternateReason::WrongToolAdvice)
                     && class != RecoveryClass::WrongTool)
-                || (class != RecoveryClass::WrongTool
+                || (request.observation.alternate_reason
+                    == Some(RecoveryAlternateReason::RepeatedBlocker)
                     && request.observation.repeated_failures < thresholds.repeated_blocker)
             {
                 return abstain(RecoveryAbstention::InvalidDecision);
+            }
+            if *recoverability < thresholds.recoverability {
+                return abstain(RecoveryAbstention::LowConfidence);
             }
             Some(key.to_owned())
         }
     } else {
         None
     };
-    if correction_score.is_some_and(|score| score >= 1.0)
-        && (prerequisites || *recoverability < thresholds.recoverability)
-    {
-        return abstain(RecoveryAbstention::InvalidDecision);
+    if correction_score.is_some_and(|score| score >= 1.0) {
+        if prerequisites {
+            return abstain(RecoveryAbstention::InvalidDecision);
+        }
+        if *recoverability < thresholds.recoverability {
+            return abstain(RecoveryAbstention::LowConfidence);
+        }
     }
     RecoveryAdvice::Classified {
         class,

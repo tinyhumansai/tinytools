@@ -21,10 +21,6 @@ async fn contradictions_and_invalid_optional_answers_abstain() {
     let mut bad = valid.clone();
     choose(&mut bad, "alternate", "permitted");
     cases.push(bad);
-    let mut bad = valid.clone();
-    bad.answers
-        .insert("recoverability".into(), RecoveryAnswer::Noul(0.1));
-    cases.push(bad);
     for probabilities in [
         vec![],
         vec![1.0],
@@ -268,14 +264,61 @@ async fn valid_concrete_score_is_an_ordered_expectation() {
     );
 }
 #[test]
+fn score_rubric_must_have_exactly_three_positions() {
+    let mut input = observation();
+    input.concrete_correction = Some("Inspect schema".into());
+    for length in [1, 2, 4] {
+        let mut request = RecoveryRequest::new(input.clone()).unwrap();
+        let mut answer = decision(&request);
+        for question in &mut request.questions {
+            if let RecoveryQuestion::Score { rubric, .. } = question {
+                *rubric = vec!["Position".into(); length];
+            }
+        }
+        answer.answers.insert(
+            "correction".into(),
+            RecoveryAnswer::Score {
+                probabilities: vec![1.0 / f64::from(u32::try_from(length).unwrap()); length],
+                confidence: 0.9,
+            },
+        );
+        assert!(answer.validate(&request).is_err(), "rubric length {length}");
+    }
+}
+#[tokio::test]
+async fn low_recoverability_abstains_as_low_confidence_for_selected_advice() {
+    for correction in [false, true] {
+        let mut input = observation();
+        if correction {
+            input.concrete_correction = Some("Inspect schema".into());
+        } else {
+            input.alternate_reason = Some(RecoveryAlternateReason::WrongToolAdvice);
+            input.candidates.push(JevOption {
+                key: "permitted".into(),
+                description: "Lookup".into(),
+            });
+        }
+        let request = RecoveryRequest::new(input.clone()).unwrap();
+        let mut answer = decision(&request);
+        if !correction {
+            choose(&mut answer, "class", "wrong_tool");
+            choose(&mut answer, "alternate", "permitted");
+        }
+        answer
+            .answers
+            .insert("recoverability".into(), RecoveryAnswer::Noul(0.1));
+        let (adviser, _) = adviser(Ok(answer));
+        assert_eq!(
+            adviser.advise(input).await.unwrap(),
+            RecoveryAdvice::Abstained(RecoveryAbstention::LowConfidence)
+        );
+    }
+}
+#[test]
 fn duplicate_question_ids_do_not_validate() {
     let mut request = RecoveryRequest::new(observation()).unwrap();
-    let mut answer = decision(&request);
+    let answer = decision(&request);
     request.questions[1] = request.questions[0].clone();
-    answer.answers.remove("recoverability");
-    answer
-        .answers
-        .insert("unrequested".into(), RecoveryAnswer::Noul(0.8));
     assert!(answer.validate(&request).is_err());
 }
 #[test]
@@ -305,7 +348,7 @@ fn empty_choice_options_and_score_rubrics_do_not_validate() {
     input.concrete_correction = Some("Inspect schema".into());
     for id in ["class", "correction"] {
         let mut request = RecoveryRequest::new(input.clone()).unwrap();
-        let mut answer = decision(&request);
+        let answer = decision(&request);
         for question in &mut request.questions {
             if question.id() == id {
                 match question {
@@ -314,11 +357,6 @@ fn empty_choice_options_and_score_rubrics_do_not_validate() {
                     RecoveryQuestion::Noul { .. } => unreachable!(),
                 }
             }
-        }
-        match answer.answers.get_mut(id).unwrap() {
-            RecoveryAnswer::Choice { probabilities, .. } => probabilities.clear(),
-            RecoveryAnswer::Score { probabilities, .. } => probabilities.clear(),
-            RecoveryAnswer::Noul(_) => unreachable!(),
         }
         assert!(answer.validate(&request).is_err(), "empty {id} request");
     }
@@ -377,4 +415,34 @@ async fn dropping_advice_cancels_the_provider_future_without_retry() {
     assert!(matches!(future.as_mut().poll(&mut context), Poll::Pending));
     drop(future);
     assert_eq!(provider.entered.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn duplicate_choice_keys_with_only_requested_probabilities_do_not_validate() {
+    let mut request = RecoveryRequest::new(observation()).unwrap();
+    let mut answer = decision(&request);
+    if let RecoveryQuestion::Choice { options, .. } = &mut request.questions[0] {
+        options[1].key = options[0].key.clone();
+    }
+    if let RecoveryAnswer::Choice { probabilities, .. } = answer.answers.get_mut("class").unwrap() {
+        probabilities.remove("rate_limited");
+    }
+    assert!(answer.validate(&request).is_err());
+}
+#[test]
+fn short_and_long_score_answers_do_not_validate() {
+    let mut input = observation();
+    input.concrete_correction = Some("Inspect schema".into());
+    let request = RecoveryRequest::new(input).unwrap();
+    for probabilities in [vec![0.5, 0.5], vec![0.25; 4]] {
+        let mut answer = decision(&request);
+        answer.answers.insert(
+            "correction".into(),
+            RecoveryAnswer::Score {
+                probabilities,
+                confidence: 0.9,
+            },
+        );
+        assert!(answer.validate(&request).is_err());
+    }
 }
