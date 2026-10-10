@@ -116,21 +116,48 @@ pub fn strip_control_chars(input: &str) -> String {
 /// ```
 #[must_use]
 pub fn strip_instruction_fences(input: &str) -> String {
-    let mut out = input.to_string();
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for token in INSTRUCTION_FENCE_TOKENS {
-            if let Some(pos) = find_ascii_case_insensitive(&out, token) {
-                // The match came from an ASCII scan of `out` itself, so
-                // `pos..pos + token.len()` is a valid char-boundary range.
-                out.replace_range(pos..pos + token.len(), "");
-                changed = true;
-                break;
+    let mut pending = String::new();
+    let mut out = String::with_capacity(input.len());
+    let pending_limit = INSTRUCTION_FENCE_TOKENS
+        .iter()
+        .map(|token| token.len())
+        .max()
+        .unwrap_or(0)
+        * 2;
+    for ch in input.chars() {
+        pending.push(ch);
+        loop {
+            if let Some((start, end)) = find_instruction_fence(&pending) {
+                pending.replace_range(start..end, "");
+                continue;
             }
+
+            // Keep enough lookahead for a possible prefix before a complete
+            // token to join with text after that token is removed. The buffer
+            // stays bounded by twice the longest token.
+            let mut flush = pending.len().saturating_sub(pending_limit);
+            while flush > 0 && !pending.is_char_boundary(flush) {
+                flush -= 1;
+            }
+            if flush > 0 {
+                out.push_str(&pending[..flush]);
+                pending.drain(..flush);
+            }
+            break;
         }
     }
+    out.push_str(&pending);
     out
+}
+
+/// Finds the earliest complete fence token in the bounded pending buffer.
+fn find_instruction_fence(input: &str) -> Option<(usize, usize)> {
+    INSTRUCTION_FENCE_TOKENS
+        .iter()
+        .filter_map(|token| {
+            find_ascii_case_insensitive(input, token).map(|start| (start, start + token.len()))
+        })
+        .min_by_key(|(start, _)| *start)
 }
 
 /// Returns the byte offset of the first ASCII-case-insensitive occurrence of
@@ -174,7 +201,7 @@ pub fn truncate_utf8_safe(input: &str, max_bytes: usize) -> String {
     }
     let suffix_len = TRUNCATION_SUFFIX.len();
     // Degenerate case: cap shorter than even the suffix.
-    if max_bytes <= suffix_len {
+    if max_bytes < suffix_len {
         return input[..floor_char_boundary(input, max_bytes)].to_string();
     }
     let end = floor_char_boundary(input, max_bytes - suffix_len);

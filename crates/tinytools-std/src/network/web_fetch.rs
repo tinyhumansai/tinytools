@@ -130,19 +130,27 @@ impl WebFetchTool {
         defaults: HttpLimits,
         html: Arc<dyn AsyncHtmlExtractor>,
     ) -> Self {
+        let resolved_timeout = match timeout_secs {
+            Some(0) => {
+                log::warn!(
+                    "[tool.web_fetch] coercing invalid limit field=timeout_secs from=0 to={} \
+                     (stale/invalid config — see migration 5→6)",
+                    defaults.timeout_secs
+                );
+                defaults.timeout_secs
+            }
+            Some(seconds) => seconds,
+            None => defaults.timeout_secs,
+        };
         Self::with_provider(
             gate,
             allowed_domains,
             max_bytes,
-            timeout_secs,
+            Some(resolved_timeout),
             defaults,
             HtmlProvider::Async {
                 extractor: html,
-                timeout: Duration::from_secs(
-                    timeout_secs
-                        .filter(|&seconds| seconds != 0)
-                        .unwrap_or(defaults.timeout_secs),
-                ),
+                timeout: Duration::from_secs(resolved_timeout),
             },
         )
     }

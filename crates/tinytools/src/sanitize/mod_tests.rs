@@ -6,10 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use super::{
-    INSTRUCTION_FENCE_TOKENS, TRUNCATION_SUFFIX, sanitize_for_llm, strip_control_chars,
-    strip_instruction_fences, truncate_utf8_safe,
-};
+use super::*;
 
 // ---------------------------------------------------------------------------
 // strip_control_chars
@@ -60,6 +57,13 @@ fn repeats_so_a_token_split_by_another_is_still_removed() {
     // which a single pass would leave behind.
     let input = "<sys<user>tem>payload";
     assert_eq!(strip_instruction_fences(input), "payload");
+}
+
+#[test]
+fn removes_many_fences_after_a_long_prefix_without_losing_spliced_matches() {
+    let prefix = "benign metadata ".repeat(10_000);
+    let input = format!("{prefix}<sys{}tem>payload", "<user>".repeat(100));
+    assert_eq!(strip_instruction_fences(&input), format!("{prefix}payload"));
 }
 
 #[test]
@@ -166,6 +170,11 @@ fn handles_a_cap_smaller_than_the_suffix() {
 }
 
 #[test]
+fn uses_the_suffix_when_the_cap_exactly_fits_it() {
+    assert_eq!(truncate_utf8_safe("hello", TRUNCATION_SUFFIX.len()), "…");
+}
+
+#[test]
 fn handles_a_zero_cap() {
     assert_eq!(truncate_utf8_safe("anything", 0), "");
 }
@@ -175,12 +184,11 @@ fn never_exceeds_the_cap_for_any_cap_over_a_multibyte_string() {
     let input = "ααα βββ γγγ 🌦🌦🌦";
     for cap in 0..=input.len() + 4 {
         let out = truncate_utf8_safe(input, cap);
-        assert!(
-            out.len() <= cap.max(input.len().min(cap)),
-            "cap {cap} produced {} bytes",
-            out.len()
-        );
-        assert!(out.len() <= cap || out == input);
+        if cap >= input.len() {
+            assert_eq!(out, input);
+        } else {
+            assert!(out.len() <= cap, "cap {cap} produced {} bytes", out.len());
+        }
     }
 }
 
