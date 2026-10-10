@@ -13,7 +13,10 @@ using evidenced corrections or transient conditions without an external
 prerequisite. Score is a three-category ordered feasibility distribution; its
 expectation (0..=2) is **not** a probability of success. Confidence is distribution
 concentration and is **not** accuracy. Hosts must calibrate explicit versioned
-thresholds, including the counted repeated-blocker threshold.
+thresholds, including the counted repeated-blocker threshold. Recoverability must
+be finite and in `(0, 1]`; class and advice concentration thresholds accept finite
+values in `[0, 1]`. A zero recoverability threshold would admit corrective advice
+with no prospect of recovery and reject valid external-prerequisite classifications.
 
 Candidate descriptions alone do not enable alternate evaluation. The host supplies
 `RecoveryAlternateReason::WrongToolAdvice` after prior advice or `RepeatedBlocker`

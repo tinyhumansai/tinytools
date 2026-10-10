@@ -96,6 +96,56 @@ async fn external_prerequisites_can_be_classified_without_corrective_advice() {
     ));
 }
 #[test]
+fn recoverability_threshold_requires_a_finite_positive_probability() {
+    for value in [
+        0.0,
+        -0.0,
+        -0.1,
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        1.1,
+    ] {
+        let mut policy = thresholds();
+        policy.recoverability = value;
+        let fake = Arc::new(Fake {
+            calls: AtomicUsize::new(0),
+            result: Err(()),
+        });
+        assert!(
+            RecoveryAdviser::new(fake, policy).is_err(),
+            "invalid recoverability threshold {value}"
+        );
+    }
+    for value in [f64::MIN_POSITIVE, 1.0] {
+        let mut policy = thresholds();
+        policy.recoverability = value;
+        let fake = Arc::new(Fake {
+            calls: AtomicUsize::new(0),
+            result: Err(()),
+        });
+        assert!(
+            RecoveryAdviser::new(fake, policy).is_ok(),
+            "valid recoverability threshold {value}"
+        );
+    }
+}
+
+#[test]
+fn concentration_thresholds_can_include_zero_and_one() {
+    for value in [0.0, 1.0] {
+        let mut policy = thresholds();
+        policy.class_confidence = value;
+        policy.advice_confidence = value;
+        let fake = Arc::new(Fake {
+            calls: AtomicUsize::new(0),
+            result: Err(()),
+        });
+        assert!(RecoveryAdviser::new(fake, policy).is_ok());
+    }
+}
+
+#[test]
 fn thresholds_and_observation_boundaries_are_explicit() {
     for invalid in [f64::NAN, -0.1, 1.1] {
         for field in 0..3 {

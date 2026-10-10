@@ -18,13 +18,11 @@ pub(super) fn validate_thresholds(thresholds: &RecoveryThresholds) -> Result<(),
         true,
         RecoveryObservation::MAX_KEY_BYTES,
     ) || thresholds.repeated_blocker == 0
-        || ![
-            thresholds.class_confidence,
-            thresholds.recoverability,
-            thresholds.advice_confidence,
-        ]
-        .into_iter()
-        .all(probability)
+        || !probability(thresholds.recoverability)
+        || thresholds.recoverability <= 0.0
+        || ![thresholds.class_confidence, thresholds.advice_confidence]
+            .into_iter()
+            .all(probability)
     {
         return Err(RankError::invalid_input("invalid recovery thresholds"));
     }
