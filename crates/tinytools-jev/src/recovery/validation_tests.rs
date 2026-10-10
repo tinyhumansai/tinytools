@@ -1,5 +1,13 @@
 //! Optional answer, contradiction, threshold and bounded-input contract tests.
+#![allow(clippy::unwrap_used)]
+use super::super::test_support::*;
+use super::super::{RecoveryAdviser, RecoveryEvaluator, RecoveryFact};
 use super::*;
+use crate::JevOption;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 
 #[tokio::test]
 async fn contradictions_and_invalid_optional_answers_abstain() {
@@ -469,5 +477,26 @@ async fn repeated_blocker_gate_applies_even_to_wrong_tool_classification() {
                 ..
             }
         ));
+    }
+}
+
+#[test]
+fn interpreter_rejects_under_threshold_blockers_even_when_class_is_wrong_tool() {
+    for class in ["transient", "wrong_tool"] {
+        let mut input = observation();
+        input.alternate_reason = Some(RecoveryAlternateReason::RepeatedBlocker);
+        input.repeated_failures = 1;
+        input.candidates.push(JevOption {
+            key: "permitted".into(),
+            description: "Lookup".into(),
+        });
+        let request = RecoveryRequest::new(input).unwrap();
+        let mut answer = decision(&request);
+        choose(&mut answer, "class", class);
+        choose(&mut answer, "alternate", "permitted");
+        assert_eq!(
+            advice(&request, answer, &thresholds()),
+            RecoveryAdvice::Abstained(RecoveryAbstention::InvalidDecision)
+        );
     }
 }

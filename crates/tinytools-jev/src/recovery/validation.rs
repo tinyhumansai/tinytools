@@ -255,3 +255,7 @@ pub(super) fn advice(
         correction_score,
     }
 }
+
+#[cfg(test)]
+#[path = "validation_tests.rs"]
+mod tests;

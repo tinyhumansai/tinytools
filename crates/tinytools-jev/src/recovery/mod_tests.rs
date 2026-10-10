@@ -1,93 +1,11 @@
 //! Conservative recovery contract tests with a transport-free fake evaluator.
 // Tests deliberately assert successful fixture construction before behavior.
 #![allow(clippy::unwrap_used)]
+use super::test_support::*;
 use super::*;
 use crate::JevOption;
-use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
-    time::Duration,
-};
+use std::sync::atomic::Ordering;
 
-fn observation() -> RecoveryObservation {
-    RecoveryObservation::new(
-        RecoveryPhase::Execution,
-        "Search documents",
-        "upstream temporarily unavailable",
-    )
-}
-fn thresholds() -> RecoveryThresholds {
-    RecoveryThresholds {
-        version: "test-calibration-v1".into(),
-        class_confidence: 0.7,
-        recoverability: 0.6,
-        advice_confidence: 0.7,
-        repeated_blocker: 2,
-    }
-}
-fn decision(request: &RecoveryRequest) -> RecoveryDecision {
-    let answers = request
-        .questions
-        .iter()
-        .map(|question| {
-            let answer = match question {
-                RecoveryQuestion::Choice { id, options, .. } => RecoveryAnswer::Choice {
-                    probabilities: options
-                        .iter()
-                        .map(|option| {
-                            (
-                                option.key.clone(),
-                                f64::from(
-                                    option.key == if id == "class" { "transient" } else { "none" },
-                                ),
-                            )
-                        })
-                        .collect(),
-                    confidence: 0.9,
-                },
-                RecoveryQuestion::Noul { .. } => RecoveryAnswer::Noul(0.8),
-                RecoveryQuestion::Score { .. } => RecoveryAnswer::Score {
-                    probabilities: vec![0.0, 0.0, 1.0],
-                    confidence: 0.9,
-                },
-            };
-            (question.id().to_owned(), answer)
-        })
-        .collect();
-    RecoveryDecision {
-        answers,
-        input_tokens: Some(12),
-        output_tokens: Some(4),
-        latency: Duration::from_millis(25),
-        attempts: 1,
-    }
-}
-#[derive(Debug)]
-struct Fake {
-    calls: AtomicUsize,
-    result: Result<RecoveryDecision, ()>,
-}
-#[async_trait::async_trait]
-impl RecoveryEvaluator for Fake {
-    async fn evaluate(&self, _: &RecoveryRequest) -> Result<RecoveryDecision, RankError> {
-        self.calls.fetch_add(1, Ordering::Relaxed);
-        self.result
-            .clone()
-            .map_err(|()| RankError::invalid_input("fake failure"))
-    }
-}
-fn adviser(result: Result<RecoveryDecision, ()>) -> (RecoveryAdviser, Arc<Fake>) {
-    let fake = Arc::new(Fake {
-        calls: AtomicUsize::new(0),
-        result,
-    });
-    (
-        RecoveryAdviser::new(fake.clone(), thresholds()).unwrap(),
-        fake,
-    )
-}
 #[test]
 fn builds_independent_recovery_questions_with_optional_rubric_and_none() {
     let mut input = observation();
@@ -292,13 +210,6 @@ async fn low_confidence_unknown_ties_and_provider_failure_abstain() {
     );
 }
 
-fn choose(answer: &mut RecoveryDecision, id: &str, key: &str) {
-    if let Some(RecoveryAnswer::Choice { probabilities, .. }) = answer.answers.get_mut(id) {
-        for (option, value) in probabilities {
-            *value = f64::from(option == key);
-        }
-    }
-}
 #[tokio::test]
 async fn alternates_are_advice_only_and_none_is_valid() {
     let mut input = observation();
@@ -325,6 +236,3 @@ async fn alternates_are_advice_only_and_none_is_valid() {
         }
     ));
 }
-
-#[path = "validation_tests.rs"]
-mod validation;

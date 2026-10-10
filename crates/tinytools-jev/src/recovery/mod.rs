@@ -63,5 +63,8 @@ impl RecoveryAdviser {
     }
 }
 #[cfg(test)]
+mod test_support;
+
+#[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
