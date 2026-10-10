@@ -373,10 +373,11 @@ fn classifies_6to4_embedded_destinations() {
 }
 
 #[test]
-fn classifies_teredo_server_and_client_addresses() {
+fn classifies_teredo_client_address_without_rejecting_server_address() {
     // The last two segments are the client's IPv4 address with every bit inverted.
     assert!(is_private_or_local_host("2001:0:808:808:0:0:f5ff:fffe"));
-    assert!(is_private_or_local_host("2001:0:a00:1:0:0:f7f7:f7f7"));
+    // The server is not the IPv4 destination represented by this endpoint.
+    assert!(!is_private_or_local_host("2001:0:a00:1:0:0:f7f7:f7f7"));
     assert!(!is_private_or_local_host("2001:0:808:808:0:0:fefe:fefe"));
 }
 

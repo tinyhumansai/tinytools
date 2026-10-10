@@ -478,10 +478,9 @@ pub fn is_non_global_v6(v6: std::net::Ipv6Addr) -> bool {
             && embedded_v4(segs[6], segs[7]))
         // 6to4 carries the destination IPv4 address immediately after 2002::/16.
         || (segs[0] == 0x2002 && embedded_v4(segs[1], segs[2]))
-        // Teredo carries its server IPv4 address and the client's XOR-obfuscated
-        // IPv4 address. Either may be an internal destination.
-        || (segs[..2] == [0x2001, 0]
-            && (embedded_v4(segs[2], segs[3]) || embedded_v4(!segs[6], !segs[7])))
+        // Teredo carries a server IPv4 address, but the destination is the
+        // client's XOR-obfuscated IPv4 address in the last two segments.
+        || (segs[..2] == [0x2001, 0] && embedded_v4(!segs[6], !segs[7]))
         || (segs[0] & 0xfff0) == 0x3ff0
         || segs[0] == 0x5f00
         // `to_ipv4` covers both mapped and deprecated compatible addresses.
