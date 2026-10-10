@@ -231,3 +231,71 @@ fn unconvertible_scalars_are_left_for_the_validator() {
         json!({ "l": [3] })
     );
 }
+
+/// `use_skill` captures: the nested `args` object arrives as a JSON string that
+/// is not strictly valid (single-quoted keys stripped by the model, a trailing
+/// comma, unquoted keys). Strict parsing fails; the lenient object recovery
+/// the rest of the repair path uses must still apply.
+#[test]
+fn an_object_typed_string_that_is_relaxed_json_is_recovered() {
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "skill": { "type": "string" },
+            "args": { "type": "object", "additionalProperties": true }
+        },
+        "required": ["skill"]
+    });
+    for raw in [
+        "{\"query\": \"inbox\",}",
+        "{query: \"inbox\"}",
+        "```json\n{\"query\":\"inbox\"}\n```",
+        "{\"query\":\"inbox\"}<tool_call|>",
+    ] {
+        assert_eq!(
+            coerce_to_schema(json!({ "skill": "email", "args": raw }), &schema),
+            json!({ "skill": "email", "args": { "query": "inbox" } }),
+            "{raw}"
+        );
+    }
+}
+
+/// `use_skill` captures: `"tool": null` / `"args": null` for optional
+/// properties whose declared type does not admit null. The model meant "not
+/// given"; dropping the key is what makes the call validate.
+#[test]
+fn null_for_an_optional_non_nullable_property_is_dropped() {
+    let schema = json!({
+        "type": "object",
+        "properties": {
+            "skill": { "type": "string" },
+            "tool": { "type": "string" },
+            "args": { "type": "object" },
+            "maybe": { "type": ["string", "null"] },
+            "untyped": {}
+        },
+        "required": ["skill"]
+    });
+    assert_eq!(
+        coerce_to_schema(
+            json!({ "skill": "email", "tool": null, "args": null, "maybe": null, "untyped": null }),
+            &schema
+        ),
+        json!({ "skill": "email", "maybe": null, "untyped": null })
+    );
+}
+
+/// A required property set to null is left for the validator: dropping it
+/// would only trade "must be string" for "is required".
+#[test]
+fn null_for_a_required_property_is_kept() {
+    let schema = json!({
+        "type": "object",
+        "properties": { "skill": { "type": "string" } },
+        "required": ["skill"]
+    });
+    assert_eq!(
+        coerce_to_schema(json!({ "skill": null }), &schema),
+        json!({ "skill": null })
+    );
+}
