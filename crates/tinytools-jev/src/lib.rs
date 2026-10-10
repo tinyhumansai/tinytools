@@ -1,7 +1,22 @@
 //! Dependency-free Jev-backed tool ranking.
 //!
 //! A host supplies [`JevEvaluator`], retaining ownership of transport,
-//! authentication, retry, and deadline policy.
+//! authentication, retry, and deadline policy. The additive [`recovery`] module
+//! supplies distinct advisory failure decisions through a [`recovery::RecoveryEvaluator`].
+//! It owns no transport, authorization or execution loop.
+//!
+//! ```
+//! use tinytools_jev::recovery::{RecoveryObservation, RecoveryPhase, RecoveryRequest};
+//! let observation = RecoveryObservation::new(
+//!     RecoveryPhase::Execution, "Lookup documents", "Temporary service outage",
+//! );
+//! let request = RecoveryRequest::new(observation)?;
+//! assert_eq!(request.questions.len(), 2);
+//! # Ok::<(), tinytools::RankError>(())
+//! ```
+
+/// Provider-neutral bounded advice for unresolved tool failures.
+pub mod recovery;
 
 mod family;
 #[cfg(test)]

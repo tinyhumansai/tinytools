@@ -62,3 +62,16 @@ the evaluator decides:
   `MAX_CANDIDATES` by the retriever. The family stage sets
   `JevRequest::instructions` so the evaluator asks "which group" rather than
   "which tool"; `JevRanking::families` reports what it chose.
+
+## Recovery advice
+
+The additive `recovery` module supplies a distinct bounded tool-failure contract:
+`RecoveryObservation`, independent typed `RecoveryRequest` questions,
+`RecoveryEvaluator`, strict `RecoveryDecision::validate` and `RecoveryAdviser`.
+Its Noul asks about recovery without external prerequisites rather than whether a
+request needs a tool. This API never authorizes or executes a retry. Hosts supply
+scrubbed facts, explicit calibrated thresholds and filtered alternate candidates,
+and retain deadlines, cancellation, ledgers and fallback.
+
+See [recovery design and constraints](src/recovery/README.md) and the
+[specification](../../docs/specs/tool-recovery-advice.md).

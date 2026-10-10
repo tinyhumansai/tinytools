@@ -159,3 +159,6 @@ file.
 ## License
 
 GPL-3.0-only. See [`LICENSE`](LICENSE).
+
+Recovery decisions are additive in `tinytools-jev::recovery`; see its
+[bounded advisory contract](crates/tinytools-jev/src/recovery/README.md).
