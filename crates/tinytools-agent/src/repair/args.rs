@@ -114,6 +114,14 @@ pub fn accepts_object(schema: &Value) -> bool {
 /// / `object`, and a bare scalar → `[scalar]` for `array`. A value that does
 /// not convert is left as it was, so the schema validator still reports it.
 /// Recurses into nested objects and array items with their own schemas.
+///
+/// An object-typed property given a string that is not strict JSON goes
+/// through the same lenient [`super::json::recover_object`] ladder as a whole
+/// argument blob (trailing commas, bare keys, a fence, leaked template
+/// markers). A `null` for an **optional** property whose declared `type` does
+/// not admit null is dropped: the model meant "not given" (`"tool": null`),
+/// and the key's absence is what the schema accepts. A required property is
+/// never dropped, so the validator still names it.
 #[must_use]
 pub fn coerce_to_schema(arguments: Value, schema: &Value) -> Value {
     let Value::Object(map) = arguments else {
@@ -122,15 +130,30 @@ pub fn coerce_to_schema(arguments: Value, schema: &Value) -> Value {
     let Some(properties) = schema.get("properties").and_then(Value::as_object) else {
         return Value::Object(map);
     };
+    let required = schema.get("required").and_then(Value::as_array);
+    let is_required = |key: &str| required.is_some_and(|list| list.iter().any(|r| r == key));
     let mut out = Map::with_capacity(map.len());
     for (key, value) in map {
         let coerced = match properties.get(&key) {
+            Some(property) if value.is_null() && !is_required(&key) && rejects_null(property) => {
+                continue;
+            }
             Some(property) => coerce_value(value, property),
             None => value,
         };
         out.insert(key, coerced);
     }
     Value::Object(out)
+}
+
+/// Whether `schema` declares a `type` that does not include `null`. An
+/// untyped property accepts null already, so it is never rewritten.
+fn rejects_null(schema: &Value) -> bool {
+    match schema.get("type") {
+        Some(Value::String(kind)) => kind != "null",
+        Some(Value::Array(kinds)) => !kinds.iter().any(|kind| kind == "null"),
+        _ => false,
+    }
 }
 
 fn schema_type(schema: &Value) -> Option<&str> {
@@ -169,7 +192,11 @@ fn coerce_value(value: Value, schema: &Value) -> Value {
         (Some("array"), scalar @ (Value::Number(_) | Value::Bool(_))) => Value::Array(vec![scalar]),
         (Some("object"), Value::String(s)) => match serde_json::from_str::<Value>(s.trim()) {
             Ok(object @ Value::Object(_)) => coerce_to_schema(object, schema),
-            _ => Value::String(s),
+            Ok(_) => Value::String(s),
+            Err(_) => match super::json::recover_object(super::json::strip_code_fence(&s)) {
+                Some(object) => coerce_to_schema(object, schema),
+                None => Value::String(s),
+            },
         },
         (Some("object"), object @ Value::Object(_)) => coerce_to_schema(object, schema),
         (Some("string"), Value::Number(n)) => Value::String(n.to_string()),
