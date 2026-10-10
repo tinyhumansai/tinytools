@@ -39,6 +39,7 @@
 //! - [`rank`] — [`ToolRanker`], ranking a catalogue of tools against an
 //!   intent, and the lexical [`Bm25Ranker`] every host gets for free.
 //!
+//!
 //! # What is deliberately not here
 //!
 //! **No enforcement.** Nothing in this crate checks a [`PermissionLevel`],

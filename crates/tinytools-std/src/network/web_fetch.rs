@@ -31,6 +31,58 @@ pub trait HtmlExtractor: std::fmt::Debug + Send + Sync {
     fn to_markdown(&self, html: &str) -> String;
 }
 
+/// An asynchronous, fallible HTML transform supplied by the host.
+///
+/// Use this interface when extraction runs in a separate service or module.
+/// Failures propagate to the fetch caller; the tool does not retry locally.
+#[async_trait]
+pub trait AsyncHtmlExtractor: std::fmt::Debug + Send + Sync {
+    /// Whether a response without a usable content type contains HTML.
+    ///
+    /// # Errors
+    /// Returns the host's detection failure.
+    async fn looks_like_html(&self, body: &str) -> anyhow::Result<bool>;
+
+    /// Convert HTML to Markdown, preserving links and dropping scripts.
+    ///
+    /// # Errors
+    /// Returns the host's extraction failure.
+    async fn to_markdown(&self, html: &str) -> anyhow::Result<String>;
+}
+
+#[derive(Debug)]
+enum HtmlProvider {
+    Local(Arc<dyn HtmlExtractor>),
+    Async {
+        extractor: Arc<dyn AsyncHtmlExtractor>,
+        timeout: Duration,
+    },
+}
+
+impl HtmlProvider {
+    async fn looks_like_html(&self, body: &str) -> anyhow::Result<bool> {
+        match self {
+            Self::Local(html) => Ok(html.looks_like_html(body)),
+            Self::Async { extractor, timeout } => {
+                tokio::time::timeout(*timeout, extractor.looks_like_html(body))
+                    .await
+                    .map_err(|_| anyhow::anyhow!("HTML detection timed out"))?
+            }
+        }
+    }
+
+    async fn to_markdown(&self, body: &str) -> anyhow::Result<String> {
+        match self {
+            Self::Local(html) => Ok(html.to_markdown(body)),
+            Self::Async { extractor, timeout } => {
+                tokio::time::timeout(*timeout, extractor.to_markdown(body))
+                    .await
+                    .map_err(|_| anyhow::anyhow!("HTML extraction timed out"))?
+            }
+        }
+    }
+}
+
 /// Fetches a URL and returns its text body.
 #[derive(Debug)]
 pub struct WebFetchTool {
@@ -38,7 +90,7 @@ pub struct WebFetchTool {
     allowed_domains: Vec<String>,
     max_bytes: usize,
     timeout_secs: u64,
-    html: Arc<dyn HtmlExtractor>,
+    html: HtmlProvider,
     extra_properties: Vec<(String, serde_json::Value)>,
 }
 
@@ -53,6 +105,63 @@ impl WebFetchTool {
         timeout_secs: Option<u64>,
         defaults: HttpLimits,
         html: Arc<dyn HtmlExtractor>,
+    ) -> Self {
+        Self::with_provider(
+            gate,
+            allowed_domains,
+            max_bytes,
+            timeout_secs,
+            defaults,
+            HtmlProvider::Local(html),
+        )
+    }
+
+    /// A `web_fetch` tool with asynchronous HTML detection and extraction.
+    ///
+    /// Limits and raw-response handling match [`Self::new`]. Extraction errors
+    /// propagate without invoking another provider. Both asynchronous detection
+    /// and conversion are bounded by the configured request timeout.
+    #[must_use]
+    pub fn new_async(
+        gate: Arc<dyn NetGate>,
+        allowed_domains: Vec<String>,
+        max_bytes: Option<usize>,
+        timeout_secs: Option<u64>,
+        defaults: HttpLimits,
+        html: Arc<dyn AsyncHtmlExtractor>,
+    ) -> Self {
+        let resolved_timeout = match timeout_secs {
+            Some(0) => {
+                log::warn!(
+                    "[tool.web_fetch] coercing invalid limit field=timeout_secs from=0 to={} \
+                     (stale/invalid config — see migration 5→6)",
+                    defaults.timeout_secs
+                );
+                defaults.timeout_secs
+            }
+            Some(seconds) => seconds,
+            None => defaults.timeout_secs,
+        };
+        Self::with_provider(
+            gate,
+            allowed_domains,
+            max_bytes,
+            Some(resolved_timeout),
+            defaults,
+            HtmlProvider::Async {
+                extractor: html,
+                timeout: Duration::from_secs(resolved_timeout),
+            },
+        )
+    }
+
+    fn with_provider(
+        gate: Arc<dyn NetGate>,
+        allowed_domains: Vec<String>,
+        max_bytes: Option<usize>,
+        timeout_secs: Option<u64>,
+        defaults: HttpLimits,
+        html: HtmlProvider,
     ) -> Self {
         // Treat both `None` and `Some(0)` as "use default": callers wire these
         // from `[http_request]`, and a 0-byte cap truncates every body to
@@ -295,12 +404,9 @@ impl WebFetchTool {
                 status.as_u16(),
                 retry_after.is_some()
             );
-            let excerpt = error_body_excerpt(
-                self.html.as_ref(),
-                &body,
-                content_type.as_deref(),
-                raw_requested,
-            );
+            let excerpt =
+                error_body_excerpt(&self.html, &body, content_type.as_deref(), raw_requested)
+                    .await?;
             return Ok(ToolResult::error(http_error_message(
                 status,
                 &host,
@@ -317,8 +423,8 @@ impl WebFetchTool {
         // 1,083,069 input tokens. The host's `HtmlExtractor` owns
         // content transforms.
         let converted =
-            !raw_requested && is_html(self.html.as_ref(), &body, content_type.as_deref());
-        let rendered = render_body(self.html.as_ref(), body, converted, max_bytes);
+            !raw_requested && is_html(&self.html, &body, content_type.as_deref()).await?;
+        let rendered = render_body(&self.html, body, converted, max_bytes).await?;
 
         let extracted = rendered.extracted;
         let mut header = format!("status={} url={final_url}", status.as_u16());
@@ -395,22 +501,23 @@ fn http_error_message(
 ///
 /// HTML goes through the host extractor (unless the caller asked for `raw`)
 /// so the model reads the page's words rather than its markup.
-fn error_body_excerpt(
-    extractor: &dyn HtmlExtractor,
+async fn error_body_excerpt(
+    extractor: &HtmlProvider,
     body: &str,
     content_type: Option<&str>,
     raw_requested: bool,
-) -> String {
-    let text = if !raw_requested && is_html(extractor, body, content_type) {
-        extractor.to_markdown(body)
+) -> anyhow::Result<String> {
+    let (bounded_body, _) = cap_extractor_input(body);
+    let text = if !raw_requested && is_html(extractor, bounded_body, content_type).await? {
+        extractor.to_markdown(bounded_body).await?
     } else {
         body.to_string()
     };
     let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    match collapsed.char_indices().nth(ERROR_EXCERPT_CHARS) {
+    Ok(match collapsed.char_indices().nth(ERROR_EXCERPT_CHARS) {
         Some((cut, _)) => format!("{}...", &collapsed[..cut]),
         None => collapsed,
-    }
+    })
 }
 
 /// Raw markup handed to the HTML extractor, at most.
@@ -462,20 +569,20 @@ fn append_markup_truncation_header(header: &mut String, rendered: &RenderedBody)
 /// Bounding the output is also what the schema promises, and it costs no
 /// memory: the caller has already materialised the whole body. Only the
 /// extractor's input needs a ceiling, and that is for CPU.
-fn render_body(
-    html: &dyn HtmlExtractor,
+async fn render_body(
+    html: &HtmlProvider,
     body: String,
     converted: bool,
     max_bytes: usize,
-) -> RenderedBody {
-    let (markup_truncated, body) = if converted && body.len() > EXTRACTOR_INPUT_CEILING {
-        let cut = floor_char_boundary(&body, EXTRACTOR_INPUT_CEILING);
-        (true, body[..cut].to_string())
+) -> anyhow::Result<RenderedBody> {
+    let (markup_truncated, body) = if converted {
+        let (body, truncated) = cap_extractor_input(&body);
+        (truncated, body.to_string())
     } else {
         (false, body)
     };
     let full = if converted {
-        html.to_markdown(&body)
+        html.to_markdown(&body).await?
     } else {
         body
     };
@@ -486,11 +593,21 @@ fn render_body(
     } else {
         (full, false)
     };
-    RenderedBody {
+    Ok(RenderedBody {
         content,
         extracted,
         output_capped,
         markup_truncated,
+    })
+}
+
+/// Bound every body before it crosses into a host supplied extractor.
+fn cap_extractor_input(body: &str) -> (&str, bool) {
+    if body.len() > EXTRACTOR_INPUT_CEILING {
+        let cut = floor_char_boundary(body, EXTRACTOR_INPUT_CEILING);
+        (&body[..cut], true)
+    } else {
+        (body, false)
     }
 }
 
@@ -509,20 +626,25 @@ fn floor_char_boundary(s: &str, index: usize) -> usize {
 /// Is this HTML? The server's own `Content-Type` is authoritative when it
 /// says so; otherwise fall back to the host's content detection, which
 /// already distinguishes HTML from JSON, diffs and code.
-fn is_html(extractor: &dyn HtmlExtractor, body: &str, content_type: Option<&str>) -> bool {
+async fn is_html(
+    extractor: &HtmlProvider,
+    body: &str,
+    content_type: Option<&str>,
+) -> anyhow::Result<bool> {
     if let Some(ct) = content_type {
         let ct = ct.to_ascii_lowercase();
         let mime = ct.split(';').next().unwrap_or("").trim().to_string();
         // An explicit non-HTML type is a statement, not a guess: a JSON API
         // that happens to embed markup must come back verbatim.
         if !mime.is_empty() && mime != "text/html" && mime != "application/xhtml+xml" {
-            return false;
+            return Ok(false);
         }
         if !mime.is_empty() {
-            return true;
+            return Ok(true);
         }
     }
-    extractor.looks_like_html(body)
+    let (body, _) = cap_extractor_input(body);
+    extractor.looks_like_html(body).await
 }
 
 #[cfg(test)]
