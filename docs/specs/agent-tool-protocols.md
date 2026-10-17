@@ -58,8 +58,15 @@ carry calls.
 `parse_tool_calls_from_json_value`, `extract_json_values`,
 `parse_arguments_value`, `parse_glm_style_tool_calls` and the `dialect` API
 keep their signatures. `ParsedToolCall` gained a `source: CallSource` field
-and a `new` / `native` constructor; construct it through those.
-`CallSource` is `#[non_exhaustive]`; `dialect::ToolCallFormat` is not, and
+and a `new` / `native` constructor; construct it through those. It later
+gained `termination: Termination` (`Terminated` from both constructors,
+`EndOfText` for a Harmony payload read to the end of the text, and
+`ClosersBalanced` when the JSON repair ladder had to append the closers the
+arguments were missing) with a `may_be_truncated()` accessor, so a host can
+refuse exactly the calls an output-limit stop may have cut off.
+`repair::json::recover_object_tracked` / `recover_whole_object_tracked`
+return that same `closers_balanced` signal alongside the object.
+`CallSource` and `Termination` are `#[non_exhaustive]`; `dialect::ToolCallFormat` is not, and
 gained `Python` and `TypeScript`, so a consumer matching it exhaustively
 must add the arms when it takes this version.
 

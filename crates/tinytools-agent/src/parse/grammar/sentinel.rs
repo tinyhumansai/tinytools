@@ -21,8 +21,8 @@ use regex::Regex;
 
 use super::{Block, Decoded, Grammar, Probe, ScanMode, pending_opener, prefer_pending};
 use crate::parse::call_object::{AliasPolicy, read_calls};
-use crate::repair::json::{recover_object, strip_code_fence};
-use crate::types::{CallSource, ParseOptions, ParsedToolCall};
+use crate::repair::json::{recover_object_tracked, strip_code_fence};
+use crate::types::{CallSource, ParseOptions, ParsedToolCall, Termination};
 
 /// The sentinel-token grammar.
 #[derive(Debug)]
@@ -149,9 +149,12 @@ fn decode_body(body: &str, options: &ParseOptions<'_>) -> Vec<ParsedToolCall> {
         && let Some(sep) = re.find(body)
     {
         let name = kimi_name(&body[..sep.start()]);
-        let arguments = arguments_from(&body[sep.end()..]);
+        let (arguments, termination) = arguments_from(&body[sep.end()..]);
         if !name.is_empty() {
-            return vec![ParsedToolCall::new(name, arguments, CallSource::Sentinel)];
+            return vec![
+                ParsedToolCall::new(name, arguments, CallSource::Sentinel)
+                    .with_termination(termination),
+            ];
         }
         return Vec::new();
     }
@@ -173,21 +176,35 @@ fn decode_body(body: &str, options: &ParseOptions<'_>) -> Vec<ParsedToolCall> {
         if name.is_empty() {
             return Vec::new();
         }
-        return vec![ParsedToolCall::new(
-            name,
-            arguments_from(raw_arguments),
-            CallSource::Sentinel,
-        )];
+        let (arguments, termination) = arguments_from(raw_arguments);
+        return vec![
+            ParsedToolCall::new(name, arguments, CallSource::Sentinel)
+                .with_termination(termination),
+        ];
     }
 
     // No separator: a `{"name":…,"arguments":…}` object, possibly fenced.
     let unfenced = strip_code_fence(body);
-    let value = serde_json::from_str::<serde_json::Value>(unfenced)
-        .ok()
-        .or_else(|| recover_object(unfenced));
-    match value {
-        Some(value) => read_calls(&value, AliasPolicy::Marked, &is_known, CallSource::Sentinel),
-        None => Vec::new(),
+    let (value, termination) = match serde_json::from_str::<serde_json::Value>(unfenced) {
+        Ok(value) => (value, Termination::Terminated),
+        Err(_) => match recover_object_tracked(unfenced) {
+            Some(recovered) => (recovered.value, termination_of(recovered.closers_balanced)),
+            None => return Vec::new(),
+        },
+    };
+    read_calls(&value, AliasPolicy::Marked, &is_known, CallSource::Sentinel)
+        .into_iter()
+        .map(|call| call.with_termination(termination))
+        .collect()
+}
+
+/// [`Termination::ClosersBalanced`] when the body's object only parsed once
+/// its missing closers were appended.
+fn termination_of(closers_balanced: bool) -> Termination {
+    if closers_balanced {
+        Termination::ClosersBalanced
+    } else {
+        Termination::Terminated
     }
 }
 
@@ -207,15 +224,20 @@ fn kimi_name(raw: &str) -> &str {
         .trim()
 }
 
-/// Arguments from a possibly fenced JSON object; empty object when absent.
-fn arguments_from(raw: &str) -> serde_json::Value {
+/// Arguments from a possibly fenced JSON object, and how they ended; empty
+/// object when absent.
+fn arguments_from(raw: &str) -> (serde_json::Value, Termination) {
     let unfenced = strip_code_fence(raw.trim());
     if unfenced.is_empty() {
-        return serde_json::json!({});
+        return (serde_json::json!({}), Termination::Terminated);
     }
-    serde_json::from_str::<serde_json::Value>(unfenced)
-        .ok()
-        .filter(serde_json::Value::is_object)
-        .or_else(|| recover_object(unfenced))
-        .unwrap_or_else(|| serde_json::json!({}))
+    if let Ok(value @ serde_json::Value::Object(_)) =
+        serde_json::from_str::<serde_json::Value>(unfenced)
+    {
+        return (value, Termination::Terminated);
+    }
+    match recover_object_tracked(unfenced) {
+        Some(recovered) => (recovered.value, termination_of(recovered.closers_balanced)),
+        None => (serde_json::json!({}), Termination::Terminated),
+    }
 }

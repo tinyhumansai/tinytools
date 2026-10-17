@@ -16,8 +16,8 @@
 //! alone; `{"name":"Alice","input":"hi"}` is left alone.
 
 use crate::parse::call_object::{AliasPolicy, read_calls};
-use crate::repair::json::{recover_whole_object, strip_code_fence};
-use crate::types::{CallSource, ParseOptions, ParsedToolCall};
+use crate::repair::json::{recover_whole_object_tracked, strip_code_fence};
+use crate::types::{CallSource, ParseOptions, ParsedToolCall, Termination};
 
 /// The calls in a whole-response JSON value, plus any `content` text it
 /// carried. `None` when the response is not one JSON value.
@@ -32,17 +32,28 @@ pub(crate) fn parse(
     }
     let is_known = |name: &str| options.knows(name);
 
-    let value = match serde_json::from_str::<serde_json::Value>(candidate) {
-        Ok(value) => value,
+    let (value, closers_balanced) = match serde_json::from_str::<serde_json::Value>(candidate) {
+        Ok(value) => (value, false),
         // A non-object that parsed strictly is not a call; do not "repair"
         // it into one. Only an object-shaped candidate is worth recovering.
-        Err(_) if first == '{' => recover_whole_object(candidate)?,
+        Err(_) if first == '{' => {
+            let recovered = recover_whole_object_tracked(candidate)?;
+            (recovered.value, recovered.closers_balanced)
+        }
         Err(_) => return None,
     };
 
-    let calls = read_calls(&value, AliasPolicy::Bare, &is_known, CallSource::BareJson);
+    let mut calls = read_calls(&value, AliasPolicy::Bare, &is_known, CallSource::BareJson);
     if calls.is_empty() {
         return None;
+    }
+    if closers_balanced {
+        // The response ended inside an open value: there is no marker to
+        // tell a reply the model finished from one the provider cut, so
+        // every call read out of it carries the repair.
+        for call in &mut calls {
+            call.termination = Termination::ClosersBalanced;
+        }
     }
     let content = value
         .get("content")

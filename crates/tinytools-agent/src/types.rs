@@ -40,6 +40,34 @@ pub enum CallSource {
     Element,
 }
 
+/// How the block a call was read from came to an end.
+///
+/// A text-dialect grammar can recover a call the model never finished
+/// writing: the Harmony grammar reads a payload with no `<|call|>` to the end
+/// of the text, and the JSON repair ladder closes any `{` or `[` a cut landed
+/// inside of. Neither is distinguishable from a complete call by the
+/// arguments alone, so this records how the block ended and a host that saw
+/// an output-limit stop can refuse exactly the calls that may have been cut
+/// off, instead of the last call of every length-stopped reply.
+///
+/// When both apply — a payload that ran to end-of-text *and* needed closers —
+/// [`Termination::EndOfText`] wins: it is the stronger evidence, and the
+/// missing closers follow from it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Termination {
+    /// The block ended at its grammar's closing marker, or the call came
+    /// through a channel with no block to end (a native call, a parsed JSON
+    /// value), and its arguments needed no closers appended.
+    #[default]
+    Terminated,
+    /// The block ran to the end of the text with no closing marker.
+    EndOfText,
+    /// The block was terminated, but its arguments only parsed once the
+    /// repair ladder appended the `}` / `]` they were missing.
+    ClosersBalanced,
+}
+
 /// One model-requested tool invocation recovered from text or structured data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParsedToolCall {
@@ -60,6 +88,10 @@ pub struct ParsedToolCall {
     /// `<|channel|>`): something a model emits as a call but that quoted prose
     /// does not contain. `false` for plain `<tool_call>` and `<invoke>`.
     pub special_token: bool,
+    /// How the block the call was read from ended. [`Termination::Terminated`]
+    /// for every native call and every text block closed by its own marker;
+    /// see [`Self::may_be_truncated`].
+    pub termination: Termination,
 }
 
 impl ParsedToolCall {
@@ -72,6 +104,7 @@ impl ParsedToolCall {
             id: None,
             source,
             special_token: false,
+            termination: Termination::Terminated,
         }
     }
 
@@ -84,7 +117,30 @@ impl ParsedToolCall {
             id: Some(id.into()),
             source: CallSource::Native,
             special_token: false,
+            termination: Termination::Terminated,
         }
+    }
+
+    /// The same call with its [`Termination`] set.
+    #[must_use]
+    pub fn with_termination(mut self, termination: Termination) -> Self {
+        self.termination = termination;
+        self
+    }
+
+    /// Whether the model may have been cut off before it finished writing
+    /// this call: its block ran to the end of the text with no closing
+    /// marker, or its arguments only parsed once missing closers were
+    /// appended. `false` for every native call and every block that ended
+    /// at its own marker with arguments that needed no closers.
+    ///
+    /// On its own this is not proof of truncation — a model can simply omit
+    /// a terminator. Combined with a provider's output-limit stop reason it
+    /// is: a host that sees both should refuse the call rather than run it
+    /// with arguments that may be missing their tail.
+    #[must_use]
+    pub fn may_be_truncated(&self) -> bool {
+        !matches!(self.termination, Termination::Terminated)
     }
 }
 

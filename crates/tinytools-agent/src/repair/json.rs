@@ -67,6 +67,19 @@ const MAX_EXCESS_CLOSERS: usize = 50;
 /// [`recover_whole_object`] instead, which holds out for the entire candidate.
 #[must_use]
 pub fn recover_object(raw: &str) -> Option<Value> {
+    recover_object_tracked(raw).map(|recovered| recovered.value)
+}
+
+/// [`recover_object`], also reporting whether the object only parsed once
+/// the closers it was missing had been appended.
+///
+/// That one repair is the signature of a call cut off before the model
+/// finished it — the other rungs mend what a model *wrote*, this one mends
+/// what it never got to write — so a grammar surfaces it on the call as
+/// [`crate::types::Termination::ClosersBalanced`] and a host can refuse the
+/// call when the provider also reported an output-limit stop.
+#[must_use]
+pub fn recover_object_tracked(raw: &str) -> Option<RecoveredObject> {
     recover_ladder(raw, true)
 }
 
@@ -80,16 +93,48 @@ pub fn recover_object(raw: &str) -> Option<Value> {
 /// one.
 #[must_use]
 pub fn recover_whole_object(raw: &str) -> Option<Value> {
+    recover_whole_object_tracked(raw).map(|recovered| recovered.value)
+}
+
+/// [`recover_whole_object`], also reporting whether the object only parsed
+/// once its missing closers had been appended — see
+/// [`recover_object_tracked`].
+#[must_use]
+pub fn recover_whole_object_tracked(raw: &str) -> Option<RecoveredObject> {
     recover_ladder(raw, false)
 }
 
-fn recover_ladder(raw: &str, allow_trailing_noise: bool) -> Option<Value> {
+/// An object the repair ladder recovered, and the one repair a host needs to
+/// know about.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct RecoveredObject {
+    /// The recovered object.
+    pub value: Value,
+    /// Whether the object only parsed once [`balance_closers`] had appended
+    /// the `}` / `]` it was missing: the text ended inside an open value, as
+    /// a call cut off mid-write does. `false` when the input was strict JSON,
+    /// when another rung mended it, and when closers were *trimmed* rather
+    /// than appended (a surplus `}` is a model's overshoot, not a cut).
+    pub closers_balanced: bool,
+}
+
+impl RecoveredObject {
+    fn new(value: Value, closers_balanced: bool) -> Self {
+        Self {
+            value,
+            closers_balanced,
+        }
+    }
+}
+
+fn recover_ladder(raw: &str, allow_trailing_noise: bool) -> Option<RecoveredObject> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
     }
     if let Some(object) = parse_object(trimmed) {
-        return Some(object);
+        return Some(RecoveredObject::new(object, false));
     }
 
     // Rung 1: unwrap and de-noise, then retry strictly.
@@ -97,39 +142,41 @@ fn recover_ladder(raw: &str, allow_trailing_noise: bool) -> Option<Value> {
     candidate = strip_template_markers(&candidate);
     candidate = normalize_leaked_quote_tokens(&candidate);
     if let Some(object) = parse_object(candidate.trim()) {
-        return Some(object);
+        return Some(RecoveredObject::new(object, false));
     }
 
     // Rung 2: character-level damage a strict parser rejects outright.
     candidate = escape_control_characters(&candidate);
     candidate = strip_trailing_commas(&candidate);
     if let Some(object) = parse_object(candidate.trim()) {
-        return Some(object);
+        return Some(RecoveredObject::new(object, false));
     }
-    if let Some(object) = parse_object(&balance_closers(candidate.trim())) {
-        return Some(object);
+    let (balanced, appended) = balance_closers_tracked(candidate.trim());
+    if let Some(object) = parse_object(&balanced) {
+        return Some(RecoveredObject::new(object, appended));
     }
 
     // Rung 3: structural relaxations, retried at each brace depth.
     if let Some(object) = peel_and_quote(candidate.trim()) {
-        return Some(object);
+        return Some(RecoveredObject::new(object, false));
     }
 
     // Rung 4: typographic quotes, then the whole ladder once more.
     let straightened = straighten_quotes(&candidate);
     if straightened != candidate {
         if let Some(object) = parse_object(straightened.trim()) {
-            return Some(object);
+            return Some(RecoveredObject::new(object, false));
         }
-        if let Some(object) = peel_and_quote(&balance_closers(straightened.trim())) {
-            return Some(object);
+        let (balanced, appended) = balance_closers_tracked(straightened.trim());
+        if let Some(object) = peel_and_quote(&balanced) {
+            return Some(RecoveredObject::new(object, appended));
         }
     }
 
     // Rung 5: a valid leading object followed by trailing noise. Only when
     // the caller has already established that trailing noise is expected.
     if allow_trailing_noise {
-        return leading_object(candidate.trim());
+        return leading_object(candidate.trim()).map(|object| RecoveredObject::new(object, false));
     }
     None
 }
@@ -346,6 +393,13 @@ pub fn strip_trailing_commas(s: &str) -> String {
 /// run of excess closers, so a call cut off mid-stream still parses.
 #[must_use]
 pub fn balance_closers(s: &str) -> String {
+    balance_closers_tracked(s).0
+}
+
+/// [`balance_closers`], with whether any closer was *appended*. Trimming a
+/// surplus closer leaves it `false`: that is the model overshooting, not a
+/// value it never finished.
+fn balance_closers_tracked(s: &str) -> (String, bool) {
     let mut stack: Vec<char> = Vec::new();
     let mut in_string = false;
     let mut escaped = false;
@@ -378,7 +432,7 @@ pub fn balance_closers(s: &str) -> String {
     if in_string {
         // A value cut off mid-string cannot be completed honestly: guessing
         // where it ended would hand a tool a silently truncated argument.
-        return s.to_string();
+        return (s.to_string(), false);
     }
     let mut out = s.to_string();
     if excess > 0 && excess <= MAX_EXCESS_CLOSERS && stack.is_empty() {
@@ -389,12 +443,13 @@ pub fn balance_closers(s: &str) -> String {
                 trimmed = trimmed.trim_end().to_string();
             }
         }
-        return trimmed;
+        return (trimmed, false);
     }
+    let appended = !stack.is_empty();
     while let Some(closer) = stack.pop() {
         out.push(closer);
     }
-    out
+    (out, appended)
 }
 
 /// Replaces typographic double and single quotes with their ASCII forms.

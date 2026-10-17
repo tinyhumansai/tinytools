@@ -53,4 +53,6 @@ pub use pformat::{
     render_signature, render_signature_from_schema,
 };
 pub use stream::{StreamScrubber, StreamStep};
-pub use types::{CallSource, ParseDiagnostic, ParseOptions, ParseOutcome, ParsedToolCall};
+pub use types::{
+    CallSource, ParseDiagnostic, ParseOptions, ParseOutcome, ParsedToolCall, Termination,
+};

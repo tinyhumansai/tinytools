@@ -1,7 +1,7 @@
 //! gpt-oss Harmony and Mistral `[TOOL_CALLS]`.
 
 use super::{parse, parse_known};
-use crate::types::{CallSource, ParseDiagnostic};
+use crate::types::{CallSource, ParseDiagnostic, Termination};
 
 #[test]
 fn harmony_commentary_call_parses() {
@@ -211,4 +211,72 @@ fn mistral_v11_second_call_split_across_fragments_is_not_lost() {
     assert_eq!(second.calls[0].name, "a");
     assert_eq!(second.calls[1].name, "b");
     assert_eq!(second.text, " done!");
+}
+
+// ── Termination (tinyhumansai/tinytools#50) ────────────────────────────────
+//
+// Harmony in batch mode reads a payload with no `<|call|>` to the end of the
+// text, which recovers a call the model may never have finished. The call
+// records how its block ended so a host that also saw an output-limit stop
+// can refuse exactly those calls.
+
+#[test]
+fn harmony_call_closed_by_its_terminator_is_terminated() {
+    let response = "<|channel|>commentary to=functions.read<|message|>{\"path\":\"a\"}<|call|>";
+    let (_, calls) = parse(response);
+    assert_eq!(calls[0].termination, Termination::Terminated);
+    assert!(!calls[0].may_be_truncated());
+}
+
+#[test]
+fn harmony_call_that_ran_to_end_of_text_is_flagged() {
+    let response = "<|channel|>commentary to=functions.read<|message|>{\"path\":\"a\"}";
+    let (_, calls) = parse(response);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].arguments["path"], "a");
+    assert_eq!(calls[0].termination, Termination::EndOfText);
+    assert!(calls[0].may_be_truncated());
+}
+
+#[test]
+fn harmony_end_of_text_wins_over_balanced_closers() {
+    // Cut mid-object *and* no terminator: the stronger evidence is reported.
+    let response = "<|channel|>commentary to=functions.read<|message|>{\"path\":\"a\",\"n\":[1";
+    let (_, calls) = parse(response);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].arguments["n"], serde_json::json!([1]));
+    assert_eq!(calls[0].termination, Termination::EndOfText);
+}
+
+#[test]
+fn harmony_terminated_call_whose_payload_needed_closers_is_flagged() {
+    let response =
+        "<|channel|>commentary to=functions.read<|message|>{\"path\":\"a\",\"n\":[1<|call|>";
+    let (_, calls) = parse(response);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].termination, Termination::ClosersBalanced);
+    assert!(calls[0].may_be_truncated());
+}
+
+#[test]
+fn harmony_payload_repaired_by_another_rung_is_not_flagged() {
+    // A trailing comma is something the model wrote, not something it
+    // never got to write; only appended closers mark a possible cut.
+    let response = "<|channel|>commentary to=functions.read<|message|>{\"path\":\"a\",}<|call|>";
+    let (_, calls) = parse(response);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].arguments["path"], "a");
+    assert_eq!(calls[0].termination, Termination::Terminated);
+}
+
+#[test]
+fn harmony_call_held_while_streaming_is_flagged_on_flush() {
+    use crate::stream::StreamScrubber;
+
+    let mut s = StreamScrubber::new();
+    let held = s.feed("<|channel|>commentary to=functions.read<|message|>{\"path\":\"a\"}");
+    assert!(held.calls.is_empty(), "no terminator yet: {held:?}");
+    let flushed = s.flush();
+    assert_eq!(flushed.calls.len(), 1);
+    assert_eq!(flushed.calls[0].termination, Termination::EndOfText);
 }

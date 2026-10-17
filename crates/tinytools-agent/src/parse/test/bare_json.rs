@@ -1,7 +1,7 @@
 //! A response that is entirely one JSON value.
 
 use super::{parse, parse_known};
-use crate::types::{CallSource, ParseOptions};
+use crate::types::{CallSource, ParseOptions, Termination};
 
 #[test]
 fn a_wire_message_with_tool_calls_array_parses() {
@@ -116,4 +116,60 @@ fn a_bare_array_of_calls_parses() {
     .to_string();
     let (_, calls) = parse(&array);
     assert_eq!(calls.len(), 1);
+}
+
+// ── Termination (tinyhumansai/tinytools#50) ────────────────────────────────
+//
+// `recover_whole_object` closes any `{` or `[` a cut landed inside of, so a
+// bare-JSON reply the provider stopped at its output limit still reads as a
+// call. The call records that repair so a host can refuse it.
+
+#[test]
+fn a_complete_bare_object_is_terminated() {
+    let (_, calls) = parse(r#"{"name":"echo","arguments":{"value":"hi"}}"#);
+    assert_eq!(calls[0].termination, Termination::Terminated);
+    assert!(!calls[0].may_be_truncated());
+}
+
+#[test]
+fn a_bare_object_whose_closers_were_balanced_is_flagged() {
+    // The cut landed between values — after the inner `}` and before the
+    // outer one — which is the only cut this gated grammar recovers from.
+    let (_, calls) = parse(r#"{"name":"echo","arguments":{"value":"hi"}"#);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].arguments["value"], "hi");
+    assert_eq!(calls[0].termination, Termination::ClosersBalanced);
+    assert!(calls[0].may_be_truncated());
+}
+
+#[test]
+fn every_call_in_a_closer_balanced_envelope_is_flagged() {
+    // The cut ended the whole reply; no call in it can be told apart.
+    let (_, calls) =
+        parse(r#"{"tool_calls":[{"name":"a","arguments":{}},{"name":"b","arguments":{"x":1}}"#);
+    assert_eq!(calls.len(), 2);
+    assert!(
+        calls
+            .iter()
+            .all(|call| call.termination == Termination::ClosersBalanced)
+    );
+}
+
+#[test]
+fn a_bare_object_repaired_by_another_rung_is_not_flagged() {
+    let outcome = parse_known(
+        r#"{"name":"get_weather","parameters':{'city':"Paris"}}"#,
+        &["get_weather"],
+    );
+    assert_eq!(outcome.calls.len(), 1);
+    assert_eq!(outcome.calls[0].termination, Termination::Terminated);
+    assert!(!outcome.calls[0].may_be_truncated());
+}
+
+#[test]
+fn a_bare_object_with_surplus_closers_is_not_flagged() {
+    // A trimmed surplus `}` is the model overshooting, not a cut.
+    let (_, calls) = parse(r#"{"name":"echo","arguments":{"value":"hi"}}}"#);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].termination, Termination::Terminated);
 }

@@ -2,7 +2,7 @@
 
 use super::parse;
 use crate::parse::grammar::tagged::recover_sentinel_body;
-use crate::types::CallSource;
+use crate::types::{CallSource, Termination};
 use crate::{PFormatRegistry, PFormatToolParams, parse_tool_calls_with_pformat};
 
 #[test]
@@ -871,4 +871,45 @@ fn a_function_equals_body_in_a_tool_call_tag_is_decoded() {
     );
     assert_eq!(outcome.calls[0].source, CallSource::InvokeXml);
     assert_eq!(outcome.text, "Checking.");
+}
+
+// ── Termination (tinyhumansai/tinytools#50) ────────────────────────────────
+
+#[test]
+fn a_tagged_call_with_complete_json_is_terminated() {
+    let (_, calls) = parse(r#"<tool_call>{"name":"echo","arguments":{"a":1}}</tool_call>"#);
+    assert_eq!(calls[0].termination, Termination::Terminated);
+}
+
+#[test]
+fn a_tagged_body_whose_closers_were_balanced_is_flagged() {
+    let (_, calls) = parse(r#"<tool_call>{"name":"echo","arguments":{"a":[1</tool_call>"#);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].arguments, serde_json::json!({ "a": [1] }));
+    assert_eq!(calls[0].termination, Termination::ClosersBalanced);
+    assert!(calls[0].may_be_truncated());
+}
+
+#[test]
+fn a_tagged_body_repaired_by_another_rung_is_not_flagged() {
+    let (_, calls) = parse(r#"<tool_call>{"name":"echo","arguments":{"a":1,},}</tool_call>"#);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].termination, Termination::Terminated);
+}
+
+#[test]
+fn a_kimi_name_brace_body_whose_closers_were_balanced_is_flagged() {
+    let (_, calls) = parse(r#"<tool_call>echo{"a":{"b":1}</tool_call>"#);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].name, "echo");
+    assert_eq!(calls[0].arguments, serde_json::json!({ "a": { "b": 1 } }));
+    assert_eq!(calls[0].termination, Termination::ClosersBalanced);
+}
+
+#[test]
+fn sentinel_body_recovery_reports_balanced_closers() {
+    let (_, balanced) = recover_sentinel_body(r#"echo{"a":{"b":1}"#).expect("recovers");
+    assert!(balanced);
+    let (_, balanced) = recover_sentinel_body(r"echo{a:1}").expect("recovers");
+    assert!(!balanced);
 }
