@@ -1,8 +1,8 @@
 //! JSON repair ladder.
 
 use crate::repair::json::{
-    balance_closers, escape_control_characters, recover_object, strip_code_fence,
-    strip_trailing_commas,
+    balance_closers, escape_control_characters, recover_object, recover_object_tracked,
+    recover_whole_object, recover_whole_object_tracked, strip_code_fence, strip_trailing_commas,
 };
 use serde_json::json;
 
@@ -194,4 +194,48 @@ fn strip_trailing_commas_handles_nested_arrays_and_objects_and_string_commas() {
     );
     let src = "{ \"reason\": \"a, b, c,\" }";
     assert_eq!(strip_trailing_commas(src), src);
+}
+
+// ── Tracked recovery (tinyhumansai/tinytools#50) ───────────────────────────
+
+#[test]
+fn tracked_recovery_reports_only_appended_closers() {
+    let recovered =
+        recover_object_tracked(r#"{"command": "ls -la", "timeout": 30"#).expect("recovers");
+    assert_eq!(
+        recovered.value,
+        json!({ "command": "ls -la", "timeout": 30 })
+    );
+    assert!(recovered.closers_balanced);
+
+    // Strict input, another rung's repair, and a trimmed surplus closer are
+    // all things the model wrote; none marks a cut.
+    for raw in [
+        r#"{"a":1}"#,
+        r#"{"a": [1, 2,]}"#,
+        r#"{"a":{"b":1}}}}"#,
+        r#"{toolkits:["discord"]}"#,
+        "{\"a\":1}<tool_call|>{\"b\":2}",
+        "{“path”: “a.txt”}",
+    ] {
+        let recovered = recover_object_tracked(raw).expect(raw);
+        assert!(!recovered.closers_balanced, "{raw}");
+    }
+}
+
+#[test]
+fn tracked_recovery_reports_closers_appended_after_straightening_quotes() {
+    let recovered = recover_object_tracked("{“path”: “a.txt”").expect("recovers");
+    assert_eq!(recovered.value, json!({ "path": "a.txt" }));
+    assert!(recovered.closers_balanced);
+}
+
+#[test]
+fn tracked_whole_object_recovery_matches_the_untracked_ladder() {
+    let raw = r#"{"name":"shell","arguments":{"command":"x""#;
+    let recovered = recover_whole_object_tracked(raw).expect("recovers");
+    assert_eq!(Some(recovered.value), recover_whole_object(raw));
+    assert!(recovered.closers_balanced);
+    assert!(recover_whole_object_tracked(r#"{"a":1} trailing"#).is_none());
+    assert!(recover_object_tracked("").is_none());
 }

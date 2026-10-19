@@ -38,8 +38,8 @@ use crate::parse::json_values::{
     extract_first_json_value_with_end, extract_json_values, find_json_end,
 };
 use crate::repair::args::from_call_object;
-use crate::repair::json::{recover_object, strip_code_fence};
-use crate::types::{CallSource, ParseOptions, ParsedToolCall};
+use crate::repair::json::{recover_object_tracked, strip_code_fence};
+use crate::types::{CallSource, ParseOptions, ParsedToolCall, Termination};
 
 /// The tagged-JSON grammar.
 #[derive(Debug)]
@@ -704,7 +704,7 @@ pub(crate) fn decode_body(body: &str, options: &ParseOptions<'_>) -> Vec<ParsedT
         }
     }
 
-    if let Some(recovered) = recover_sentinel_body(body)
+    if let Some((recovered, closers_balanced)) = recover_sentinel_body(body)
         && let Ok(value) = serde_json::from_str::<serde_json::Value>(&recovered)
     {
         let calls = read_calls(
@@ -714,7 +714,7 @@ pub(crate) fn decode_body(body: &str, options: &ParseOptions<'_>) -> Vec<ParsedT
             CallSource::TaggedJson,
         );
         if !calls.is_empty() {
-            return calls;
+            return mark_closers_balanced(calls, closers_balanced);
         }
     }
 
@@ -732,19 +732,34 @@ pub(crate) fn decode_body(body: &str, options: &ParseOptions<'_>) -> Vec<ParsedT
         return calls;
     }
 
-    if let Some(value) = recover_object(unfenced) {
+    if let Some(recovered) = recover_object_tracked(unfenced) {
         let calls = read_calls(
-            &value,
+            &recovered.value,
             AliasPolicy::Marked,
             &is_known,
             CallSource::TaggedJson,
         );
         if !calls.is_empty() {
-            return calls;
+            return mark_closers_balanced(calls, recovered.closers_balanced);
         }
     }
 
     super::glm::parse_lines(body)
+}
+
+/// Marks every call as [`Termination::ClosersBalanced`] when the body they
+/// were read from only parsed once its missing closers were appended.
+fn mark_closers_balanced(
+    calls: Vec<ParsedToolCall>,
+    closers_balanced: bool,
+) -> Vec<ParsedToolCall> {
+    if !closers_balanced {
+        return calls;
+    }
+    calls
+        .into_iter()
+        .map(|call| call.with_termination(Termination::ClosersBalanced))
+        .collect()
 }
 
 /// Strips a leading `call:` some models emit right after the open tag.
@@ -757,10 +772,11 @@ fn strip_call_prefix(body: &str) -> &str {
 
 /// Recovers a Kimi-K2-family `NAME{…}` body — the action name before a
 /// JSON-ish object with unquoted keys and `<|"|>` in place of string quotes —
-/// into canonical `{"name":…,"arguments":…}` JSON. `None` when the shape does
-/// not match: a body already starting with `{`, a P-Format `NAME[…]` body,
-/// or trailing text after the object all fall through unchanged.
-pub(crate) fn recover_sentinel_body(body: &str) -> Option<String> {
+/// into canonical `{"name":…,"arguments":…}` JSON, with whether the object
+/// only parsed once its missing closers were appended. `None` when the shape
+/// does not match: a body already starting with `{`, a P-Format `NAME[…]`
+/// body, or trailing text after the object all fall through unchanged.
+pub(crate) fn recover_sentinel_body(body: &str) -> Option<(String, bool)> {
     let repaired = body.replace(ARG_QUOTE_SENTINEL, "\"");
     let trimmed = repaired.trim();
     let brace = trimmed.find('{')?;
@@ -772,6 +788,9 @@ pub(crate) fn recover_sentinel_body(body: &str) -> Option<String> {
     if !object.starts_with('{') || !object.ends_with('}') {
         return None;
     }
-    let arguments = recover_object(object)?;
-    serde_json::to_string(&serde_json::json!({ "name": name, "arguments": arguments })).ok()
+    let recovered = recover_object_tracked(object)?;
+    let canonical = serde_json::json!({ "name": name, "arguments": recovered.value });
+    serde_json::to_string(&canonical)
+        .ok()
+        .map(|json| (json, recovered.closers_balanced))
 }

@@ -7,7 +7,7 @@ use crate::parse::{
     extract_json_values, parse_arguments_value, parse_tool_call_value,
     parse_tool_calls_from_json_value,
 };
-use crate::types::ParseDiagnostic;
+use crate::types::{CallSource, ParseDiagnostic, ParsedToolCall, Termination};
 
 #[test]
 fn a_call_inside_a_language_fence_is_an_example_not_a_call() {
@@ -303,4 +303,36 @@ fn special_token_marks_only_template_token_openers() {
         assert_eq!(streamed.len(), 1, "streamed: {reply}");
         assert_eq!(streamed[0].special_token, special, "streamed: {reply}");
     }
+}
+
+// ── Termination (tinyhumansai/tinytools#50) ────────────────────────────────
+
+#[test]
+fn constructors_default_to_terminated_and_with_termination_overrides() {
+    let text = ParsedToolCall::new("echo", serde_json::json!({}), CallSource::TaggedJson);
+    assert_eq!(text.termination, Termination::Terminated);
+    assert!(!text.may_be_truncated());
+
+    let native = ParsedToolCall::native("call_1", "echo", serde_json::json!({}));
+    assert_eq!(native.termination, Termination::Terminated);
+    assert!(!native.may_be_truncated());
+
+    assert_eq!(Termination::default(), Termination::Terminated);
+    for termination in [Termination::EndOfText, Termination::ClosersBalanced] {
+        let call = text.clone().with_termination(termination);
+        assert_eq!(call.termination, termination);
+        assert!(call.may_be_truncated(), "{termination:?}");
+    }
+}
+
+#[test]
+fn termination_survives_name_resolution_and_special_token_marking() {
+    let outcome = parse_known(
+        "<|channel|>commentary to=functions.get_weathr<|message|>{\"city\":\"Paris\"",
+        &["get_weather"],
+    );
+    assert_eq!(outcome.calls.len(), 1);
+    assert_eq!(outcome.calls[0].name, "get_weather");
+    assert!(outcome.calls[0].special_token);
+    assert_eq!(outcome.calls[0].termination, Termination::EndOfText);
 }

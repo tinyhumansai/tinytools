@@ -20,7 +20,7 @@ and the unknown-tool policy remain the consuming harness's or host's.
 | `render` | the catalogue, the protocol block for each dialect, the `<tool_result>` envelope and transcript replay |
 | `codecall` | `parse_calls(body, &registry)`: Python / TypeScript function calls, and `render_code_signature` for the catalogue |
 | `dialect` | `ToolDialect` binding one rendering to one parser: `XmlDialect`, `PFormatDialect`, `CodeDialect`, `NativeDialect` |
-| `types` | `ParsedToolCall`, `CallSource`, `ParseOptions`, `ParseOutcome`, `ParseDiagnostic` |
+| `types` | `ParsedToolCall`, `CallSource`, `Termination`, `ParseOptions`, `ParseOutcome`, `ParseDiagnostic` |
 
 ## Grammars
 
@@ -51,6 +51,10 @@ bounded because the alternative is a phantom call:
 - names are repaired only to a **unique** offered tool, never invented;
 - a fenced code block with a language is an example, not a call;
 - an open string in truncated JSON is never closed by guessing;
+- a call whose block ran to end-of-text with no terminator (Harmony in batch
+  mode), or whose arguments only parsed once missing `}` / `]` were appended,
+  says so in `ParsedToolCall::termination` — `may_be_truncated()` — so a host
+  that saw an output-limit stop can refuse exactly those calls;
 - this crate never mints call ids.
 
 Diagnostics carry lengths and names, never model output.

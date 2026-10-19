@@ -1,7 +1,7 @@
 //! DeepSeek-R1 / V3 and Kimi K2 sentinel tokens.
 
 use super::{parse, parse_known};
-use crate::types::{CallSource, ParseDiagnostic};
+use crate::types::{CallSource, ParseDiagnostic, Termination};
 
 #[test]
 fn deepseek_r1_function_sep_layout_parses() {
@@ -119,4 +119,44 @@ fn deepseek_sep_with_an_empty_name_is_not_a_call() {
     let response = "<|tool_call_begin|><|tool_sep|>{}<|tool_call_end|>";
     let (_, calls) = parse(response);
     assert_eq!(calls.len(), 0);
+}
+
+// ── Termination (tinyhumansai/tinytools#50) ────────────────────────────────
+
+#[test]
+fn kimi_arguments_whose_closers_were_balanced_are_flagged() {
+    let response = "<|tool_call_begin|>functions.get_weather:0<|tool_call_argument_begin|>{\"city\": \"Tokyo\", \"days\": [1<|tool_call_end|>";
+    let (_, calls) = parse(response);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].arguments["days"], serde_json::json!([1]));
+    assert_eq!(calls[0].termination, Termination::ClosersBalanced);
+}
+
+#[test]
+fn deepseek_arguments_whose_closers_were_balanced_are_flagged() {
+    let response = "<｜tool▁call▁begin｜>get_weather<｜tool▁sep｜>{\"city\":{\"name\":\"Tokyo\"}<｜tool▁call▁end｜>";
+    let (_, calls) = parse(response);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].termination, Termination::ClosersBalanced);
+}
+
+#[test]
+fn a_sentinel_call_object_whose_closers_were_balanced_is_flagged() {
+    let response = "<｜tool▁call▁begin｜>{\"name\":\"get_weather\",\"arguments\":{\"city\":\"Tokyo\"}<｜tool▁call▁end｜>";
+    let (_, calls) = parse(response);
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].termination, Termination::ClosersBalanced);
+}
+
+#[test]
+fn complete_sentinel_calls_are_terminated() {
+    for response in [
+        "<|tool_call_begin|>functions.get_weather:0<|tool_call_argument_begin|>{\"city\": \"Tokyo\"}<|tool_call_end|>",
+        "<｜tool▁call▁begin｜>get_weather<｜tool▁sep｜>{\"city\":\"Tokyo\"}<｜tool▁call▁end｜>",
+        "<｜tool▁call▁begin｜>{\"name\":\"get_weather\",\"arguments\":{\"city\":\"Tokyo\"}}<｜tool▁call▁end｜>",
+    ] {
+        let (_, calls) = parse(response);
+        assert_eq!(calls.len(), 1, "{response}");
+        assert_eq!(calls[0].termination, Termination::Terminated, "{response}");
+    }
 }

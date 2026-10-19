@@ -1,7 +1,7 @@
 //! `<invoke>` XML: Claude, `DeepSeek` DSML, namespaced, and `<function=>` forms.
 
 use super::{parse, parse_known};
-use crate::types::CallSource;
+use crate::types::{CallSource, Termination};
 use crate::{PFormatRegistry, parse_tool_calls_with_pformat};
 
 #[test]
@@ -265,4 +265,25 @@ fn dsml_space_before_the_marker_on_open_and_close_tags_still_parses() {
         calls[0].arguments["query"],
         "conversations.open slack api create dm"
     );
+}
+
+// ── Termination (tinyhumansai/tinytools#50) ────────────────────────────────
+
+#[test]
+fn an_invoke_json_body_whose_closers_were_balanced_is_flagged() {
+    let (_, calls) = parse("<function=get_weather>{\"city\":{\"name\":\"Paris\"}</function>");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(
+        calls[0].arguments,
+        serde_json::json!({ "city": { "name": "Paris" } })
+    );
+    assert_eq!(calls[0].termination, Termination::ClosersBalanced);
+}
+
+#[test]
+fn invoke_parameter_children_are_terminated() {
+    let (_, calls) = parse("<invoke name=\"read\"><parameter name=\"path\">a</parameter></invoke>");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].termination, Termination::Terminated);
+    assert!(!calls[0].may_be_truncated());
 }

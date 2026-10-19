@@ -26,8 +26,8 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use super::{Block, Decoded, Grammar, Probe, ScanMode, pending_opener, prefer_pending};
-use crate::repair::json::recover_object;
-use crate::types::{CallSource, ParseOptions, ParsedToolCall};
+use crate::repair::json::recover_object_tracked;
+use crate::types::{CallSource, ParseOptions, ParsedToolCall, Termination};
 
 /// The invoke-XML grammar.
 #[derive(Debug)]
@@ -204,15 +204,14 @@ impl InvokeXml {
             });
         }
 
-        let arguments = decode_arguments(body);
+        let (arguments, termination) = decode_arguments(body);
         Probe::Found(Block {
             start,
             end,
-            decoded: Decoded::Calls(vec![ParsedToolCall::new(
-                name,
-                arguments,
-                CallSource::InvokeXml,
-            )]),
+            decoded: Decoded::Calls(vec![
+                ParsedToolCall::new(name, arguments, CallSource::InvokeXml)
+                    .with_termination(termination),
+            ]),
         })
     }
 }
@@ -252,10 +251,12 @@ fn is_closer_or_prefixed(tag: &str) -> bool {
         || inner.contains(':')
 }
 
-/// Arguments from parameter children or a JSON body.
-fn decode_arguments(body: &str) -> serde_json::Value {
+/// Arguments from parameter children or a JSON body, and how they ended:
+/// [`Termination::ClosersBalanced`] only for a JSON body that parsed once
+/// its missing closers were appended.
+fn decode_arguments(body: &str) -> (serde_json::Value, Termination) {
     let Some(parameter_re) = PARAMETER_RE.as_ref() else {
-        return serde_json::json!({});
+        return (serde_json::json!({}), Termination::Terminated);
     };
 
     let mut parameters = serde_json::Map::new();
@@ -276,9 +277,12 @@ fn decode_arguments(body: &str) -> serde_json::Value {
         if parameters.len() == 1
             && let Some(envelope @ serde_json::Value::Object(_)) = parameters.get("arguments")
         {
-            return envelope.clone();
+            return (envelope.clone(), Termination::Terminated);
         }
-        return serde_json::Value::Object(parameters);
+        return (
+            serde_json::Value::Object(parameters),
+            Termination::Terminated,
+        );
     }
 
     let stripped = ORPHAN_PARAMETER_CLOSE_RE.as_ref().map_or_else(
@@ -287,12 +291,20 @@ fn decode_arguments(body: &str) -> serde_json::Value {
     );
     let stripped = stripped.trim();
     if stripped.is_empty() {
-        return serde_json::json!({});
+        return (serde_json::json!({}), Termination::Terminated);
     }
-    if let Some(object) = recover_object(stripped) {
-        return object;
+    if let Some(recovered) = recover_object_tracked(stripped) {
+        let termination = if recovered.closers_balanced {
+            Termination::ClosersBalanced
+        } else {
+            Termination::Terminated
+        };
+        return (recovered.value, termination);
     }
-    serde_json::json!({ "input": stripped })
+    (
+        serde_json::json!({ "input": stripped }),
+        Termination::Terminated,
+    )
 }
 
 /// A parameter value: JSON when it parses as a number, bool, null, array or

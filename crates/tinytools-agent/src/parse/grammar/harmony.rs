@@ -14,8 +14,8 @@
 //! left alone.
 
 use super::{Block, Decoded, Grammar, Probe, ScanMode, find_ci};
-use crate::repair::json::recover_object;
-use crate::types::{CallSource, ParseOptions, ParsedToolCall};
+use crate::repair::json::recover_object_tracked;
+use crate::types::{CallSource, ParseOptions, ParsedToolCall, Termination};
 
 /// The Harmony grammar.
 #[derive(Debug)]
@@ -60,14 +60,18 @@ impl Grammar for Harmony {
                 if mode == ScanMode::Stream {
                     return Probe::Pending { start };
                 }
-                // Batch: the payload runs to the end of the text.
-                return found(start, text.len(), &name, after);
+                // Batch: the payload runs to the end of the text. The model
+                // may simply have omitted `<|call|>` — or been cut off
+                // before writing it; the call carries which, so a host that
+                // also saw an output-limit stop can refuse it.
+                return found(start, text.len(), &name, after, PayloadEnd::EndOfText);
             };
             return found(
                 start,
                 payload_start + term_end,
                 &name,
                 &after[..payload_end],
+                PayloadEnd::Terminator,
             );
         }
         Probe::None
@@ -95,16 +99,34 @@ fn absorb_start_prefix(text: &str, idx: usize) -> usize {
     }
 }
 
-fn found(start: usize, end: usize, name: &str, payload: &str) -> Probe {
-    let arguments = recover_object(payload).unwrap_or_else(|| serde_json::json!({}));
+/// What ended a call's `<|message|>` payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PayloadEnd {
+    /// One of [`TERMINATORS`].
+    Terminator,
+    /// The end of the text, in batch mode.
+    EndOfText,
+}
+
+fn found(start: usize, end: usize, name: &str, payload: &str, payload_end: PayloadEnd) -> Probe {
+    let recovered = recover_object_tracked(payload);
+    let closers_balanced = recovered
+        .as_ref()
+        .is_some_and(|recovered| recovered.closers_balanced);
+    let arguments = recovered.map_or_else(|| serde_json::json!({}), |recovered| recovered.value);
+    // End-of-text is the stronger evidence of a cut and subsumes the
+    // closers it left open, so it wins when both apply.
+    let termination = match payload_end {
+        PayloadEnd::EndOfText => Termination::EndOfText,
+        PayloadEnd::Terminator if closers_balanced => Termination::ClosersBalanced,
+        PayloadEnd::Terminator => Termination::Terminated,
+    };
     Probe::Found(Block {
         start,
         end,
-        decoded: Decoded::Calls(vec![ParsedToolCall::new(
-            name,
-            arguments,
-            CallSource::Harmony,
-        )]),
+        decoded: Decoded::Calls(vec![
+            ParsedToolCall::new(name, arguments, CallSource::Harmony).with_termination(termination),
+        ]),
     })
 }
 
