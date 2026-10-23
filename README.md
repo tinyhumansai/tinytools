@@ -78,6 +78,12 @@ second sibling: a `ToolRanker` backed by TypeSafe's Jev decision model through
 `tinyjevclient`, kept out of the vocabulary crate because it carries an HTTP
 transport.
 
+[`tinytools-code`](crates/tinytools-code/README.md) is a pure sibling for bounded
+syntax analysis, revision-checked edits and typed boilerplate rendering. The
+optional `code` feature in [`tinytools-std`](crates/tinytools-std/README.md) exposes
+the six filesystem-backed tools through a host's `FsGate`. Neither package adds
+parser or runtime dependencies to the base vocabulary crate.
+
 ## What is deliberately not here
 
 **No enforcement.** Nothing in this crate checks a `PermissionLevel`, applies a

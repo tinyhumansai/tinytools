@@ -46,6 +46,16 @@ async fn system_dns_resolves_numeric_loopback_without_external_network() -> anyh
     let resolved = super::resolve_host_ips("127.0.0.1".to_string(), 80).await?;
     assert_eq!(resolved, vec!["127.0.0.1".parse::<std::net::IpAddr>()?]);
     assert!(super::resolve_host_ips(String::new(), 80).await.is_err());
+    assert!(
+        super::resolve_host_ips(" \t".to_string(), 80)
+            .await
+            .is_err()
+    );
+    // An embedded NUL is rejected by the OS resolver without network access.
+    let error = super::resolve_host_ips("invalid\0host".to_string(), 80)
+        .await
+        .rejection()?;
+    assert!(error.contains("DNS resolution failed"));
     Ok(())
 }
 

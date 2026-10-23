@@ -1,0 +1,4 @@
+export function {{name}}() {
+    const label = {{label}};
+    return <button type="button" aria-label={label}>{label}</button>;
+}

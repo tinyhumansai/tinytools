@@ -23,3 +23,5 @@ the contract; production code still belongs under `src/`.
 See [`example-retry-policy.md`](example-retry-policy.md) for a complete sample.
 
 Implemented host-facing helper contracts: [collapsed tools and standard helpers](collapsed-tools-and-standard-helpers.md), [tool rules](tool-rules.md).
+
+Accepted: [structural code and boilerplate](structural-code.md).

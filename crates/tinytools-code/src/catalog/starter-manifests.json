@@ -1,0 +1,378 @@
+[
+  {
+    "id": "rust.fallible-function.v1",
+    "summary": "Rust fallible function with an explicit result type",
+    "language": "rust",
+    "target": "file",
+    "template_path": "templates/rust.fallible-function.v1.txt",
+    "parameters": [
+      {
+        "name": "name",
+        "kind": "identifier",
+        "required": false,
+        "default": "run"
+      },
+      {
+        "name": "return_type",
+        "kind": "type_expr",
+        "required": false,
+        "default": "()"
+      },
+      {
+        "name": "error_type",
+        "kind": "type_expr",
+        "required": false,
+        "default": "String"
+      }
+    ],
+    "slots": [
+      {
+        "name": "body",
+        "required": false
+      }
+    ],
+    "dependencies": [],
+    "tags": [
+      "rust",
+      "file"
+    ],
+    "forbidden_nodes": []
+  },
+  {
+    "id": "rust.tauri-command.v1",
+    "summary": "Tauri command returning a typed result",
+    "language": "rust",
+    "target": "file",
+    "template_path": "templates/rust.tauri-command.v1.txt",
+    "parameters": [
+      {
+        "name": "name",
+        "kind": "identifier",
+        "required": false,
+        "default": "greet"
+      }
+    ],
+    "slots": [
+      {
+        "name": "body",
+        "required": false
+      }
+    ],
+    "dependencies": [
+      "tauri"
+    ],
+    "tags": [
+      "rust",
+      "file"
+    ],
+    "forbidden_nodes": []
+  },
+  {
+    "id": "typescript.typed-function.v1",
+    "summary": "TypeScript function with explicit input and output types",
+    "language": "typescript",
+    "target": "file",
+    "template_path": "templates/typescript.typed-function.v1.txt",
+    "parameters": [
+      {
+        "name": "name",
+        "kind": "identifier",
+        "required": false,
+        "default": "transform"
+      },
+      {
+        "name": "input_type",
+        "kind": "type_expr",
+        "required": false,
+        "default": "string"
+      },
+      {
+        "name": "return_type",
+        "kind": "type_expr",
+        "required": false,
+        "default": "string"
+      }
+    ],
+    "slots": [
+      {
+        "name": "body",
+        "required": true
+      }
+    ],
+    "dependencies": [],
+    "tags": [
+      "typescript",
+      "file"
+    ],
+    "forbidden_nodes": []
+  },
+  {
+    "id": "tsx.accessible-action.v1",
+    "summary": "React native button with an accessible text label",
+    "language": "tsx",
+    "target": "file",
+    "template_path": "templates/tsx.accessible-action.v1.txt",
+    "parameters": [
+      {
+        "name": "name",
+        "kind": "pascal_case_ident",
+        "required": false,
+        "default": "Action"
+      },
+      {
+        "name": "label",
+        "kind": "string",
+        "required": false,
+        "default": "Run action"
+      }
+    ],
+    "slots": [],
+    "dependencies": [
+      "react"
+    ],
+    "tags": [
+      "tsx",
+      "file"
+    ],
+    "forbidden_nodes": []
+  },
+  {
+    "id": "python.resource-context.v1",
+    "summary": "Python resource context with explicit setup and cleanup",
+    "language": "python",
+    "target": "file",
+    "template_path": "templates/python.resource-context.v1.txt",
+    "parameters": [
+      {
+        "name": "name",
+        "kind": "identifier",
+        "required": false,
+        "default": "managed_resource"
+      }
+    ],
+    "slots": [
+      {
+        "name": "setup",
+        "required": true
+      },
+      {
+        "name": "cleanup",
+        "required": true
+      }
+    ],
+    "dependencies": [],
+    "tags": [
+      "python",
+      "file"
+    ],
+    "forbidden_nodes": []
+  },
+  {
+    "id": "go.http-handler.v1",
+    "summary": "Go HTTP handler with caller-supplied response behavior",
+    "language": "go",
+    "target": "file",
+    "template_path": "templates/go.http-handler.v1.txt",
+    "parameters": [
+      {
+        "name": "name",
+        "kind": "identifier",
+        "required": false,
+        "default": "Handle"
+      }
+    ],
+    "slots": [
+      {
+        "name": "body",
+        "required": true
+      }
+    ],
+    "dependencies": [],
+    "tags": [
+      "go",
+      "file"
+    ],
+    "forbidden_nodes": []
+  },
+  {
+    "id": "typescript.vitest-suite.v1",
+    "summary": "Vitest suite with required meaningful assertions",
+    "language": "typescript",
+    "target": "file",
+    "template_path": "templates/typescript.vitest-suite.v1.txt",
+    "parameters": [
+      {
+        "name": "suite",
+        "kind": "string",
+        "required": false,
+        "default": "example"
+      }
+    ],
+    "slots": [
+      {
+        "name": "assertions",
+        "required": true
+      }
+    ],
+    "dependencies": [
+      "vitest"
+    ],
+    "tags": [
+      "typescript",
+      "file"
+    ],
+    "forbidden_nodes": []
+  },
+  {
+    "id": "json.service-config.v1",
+    "summary": "JSON service configuration with typed values",
+    "language": "json",
+    "target": "file",
+    "template_path": "templates/json.service-config.v1.txt",
+    "parameters": [
+      {
+        "name": "name",
+        "kind": "string",
+        "required": false,
+        "default": "service"
+      },
+      {
+        "name": "port",
+        "kind": "number",
+        "required": false,
+        "default": 8080
+      },
+      {
+        "name": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "default": true
+      }
+    ],
+    "slots": [],
+    "dependencies": [],
+    "tags": [
+      "json",
+      "file"
+    ],
+    "forbidden_nodes": []
+  },
+  {
+    "id": "toml.service-config.v1",
+    "summary": "TOML service configuration with typed values",
+    "language": "toml",
+    "target": "file",
+    "template_path": "templates/toml.service-config.v1.txt",
+    "parameters": [
+      {
+        "name": "name",
+        "kind": "string",
+        "required": false,
+        "default": "service"
+      },
+      {
+        "name": "port",
+        "kind": "number",
+        "required": false,
+        "default": 8080
+      },
+      {
+        "name": "enabled",
+        "kind": "boolean",
+        "required": false,
+        "default": true
+      }
+    ],
+    "slots": [],
+    "dependencies": [],
+    "tags": [
+      "toml",
+      "file"
+    ],
+    "forbidden_nodes": []
+  },
+  {
+    "id": "rust.checked-add.v1",
+    "summary": "Rust checked addition body with an explicit overflow error",
+    "language": "rust",
+    "target": "function_body",
+    "template_path": "templates/rust.checked-add.v1.txt",
+    "parameters": [
+      {
+        "name": "left",
+        "kind": "identifier",
+        "required": false,
+        "default": "left"
+      },
+      {
+        "name": "right",
+        "kind": "identifier",
+        "required": false,
+        "default": "right"
+      }
+    ],
+    "slots": [],
+    "dependencies": [],
+    "tags": [
+      "rust",
+      "function_body"
+    ],
+    "forbidden_nodes": []
+  },
+  {
+    "id": "typescript.nullable-guard.v1",
+    "summary": "TypeScript nullish-value guard body",
+    "language": "typescript",
+    "target": "function_body",
+    "template_path": "templates/typescript.nullable-guard.v1.txt",
+    "parameters": [
+      {
+        "name": "value",
+        "kind": "identifier",
+        "required": false,
+        "default": "value"
+      },
+      {
+        "name": "message",
+        "kind": "string",
+        "required": false,
+        "default": "value is required"
+      }
+    ],
+    "slots": [],
+    "dependencies": [],
+    "tags": [
+      "typescript",
+      "function_body"
+    ],
+    "forbidden_nodes": []
+  },
+  {
+    "id": "rust.public-field.v1",
+    "summary": "Rust public field for a struct",
+    "language": "rust",
+    "target": "member",
+    "template_path": "templates/rust.public-field.v1.txt",
+    "parameters": [
+      {
+        "name": "name",
+        "kind": "identifier",
+        "required": false,
+        "default": "value"
+      },
+      {
+        "name": "type",
+        "kind": "type_expr",
+        "required": false,
+        "default": "String"
+      }
+    ],
+    "slots": [],
+    "dependencies": [],
+    "tags": [
+      "rust",
+      "member"
+    ],
+    "forbidden_nodes": []
+  }
+]

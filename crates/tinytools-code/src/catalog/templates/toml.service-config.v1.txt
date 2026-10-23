@@ -1,0 +1,4 @@
+[service]
+name = {{name}}
+port = {{port}}
+enabled = {{enabled}}

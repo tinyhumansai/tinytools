@@ -1,0 +1,9 @@
+from contextlib import contextmanager
+
+@contextmanager
+def {{name}}():
+    # @slot setup
+    try:
+        yield resource
+    finally:
+        # @slot cleanup

@@ -1,0 +1,1 @@
+{{left}}.checked_add({{right}}).ok_or_else(|| "overflow".to_owned())

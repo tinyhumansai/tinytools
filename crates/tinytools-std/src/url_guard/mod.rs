@@ -230,6 +230,9 @@ pub(crate) fn connect_host(url: &str) -> anyhow::Result<String> {
 }
 
 async fn resolve_host_ips(host: String, port: u16) -> anyhow::Result<Vec<IpAddr>> {
+    if host.trim().is_empty() {
+        anyhow::bail!("DNS host must not be empty");
+    }
     let log_host = host.clone();
     tokio::task::spawn_blocking(move || {
         (host.as_str(), port)

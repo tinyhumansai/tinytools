@@ -1,0 +1,32 @@
+[package]
+name = "tinytools-code"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bounded syntax analysis, revision-checked patches and typed boilerplate rendering without I/O."
+readme = "README.md"
+publish = false
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Content revisions detect stale source and template snapshots without I/O.
+blake3 = "1"
+# Compiled, explicit grammars provide bounded structural parsing and queries.
+tree-sitter = "0.25"
+tree-sitter-rust = "0.24"
+tree-sitter-typescript = "0.23"
+tree-sitter-javascript = "0.25"
+tree-sitter-python = "0.25"
+tree-sitter-go = "0.25"
+tree-sitter-json = "0.24"
+tree-sitter-toml-ng = "0.7"
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "structural"
+harness = false

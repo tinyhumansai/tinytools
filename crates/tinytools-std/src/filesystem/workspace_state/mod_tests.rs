@@ -62,6 +62,7 @@ async fn include_tree_false_omits_directory_tree() {
 /// where `file_write` puts things. The hook exits non-zero so git falls
 /// back to a normal scan and `status` still succeeds; the point of the test
 /// is whether the command ran at all, not what it returned.
+#[cfg(unix)]
 fn plant_fsmonitor_hook(dir: &TempDir) -> std::path::PathBuf {
     let hook = dir.path().join("hook.sh");
     let marker = dir.path().join("COMMAND_RAN");
@@ -90,6 +91,7 @@ fn plant_fsmonitor_hook(dir: &TempDir) -> std::path::PathBuf {
     marker
 }
 
+#[cfg(unix)]
 fn git_init(dir: &TempDir) {
     // `.status().unwrap()` only unwraps the *spawn*: a non-zero exit would
     // pass silently here and surface later as a confusing assertion about
@@ -104,6 +106,7 @@ fn git_init(dir: &TempDir) {
 }
 
 /// Set a repository config key with `git config`, asserting it took.
+#[cfg(unix)]
 fn set_config(dir: &TempDir, key: &str, value: &str) {
     let ok = std::process::Command::new("git")
         .args(["config", key, value])

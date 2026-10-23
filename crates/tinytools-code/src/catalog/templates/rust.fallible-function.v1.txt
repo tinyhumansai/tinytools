@@ -1,0 +1,4 @@
+pub fn {{name}}() -> Result<{{return_type}}, {{error_type}}> {
+    // @slot body
+    Ok(())
+}

@@ -338,7 +338,14 @@ async fn command_environment_replaces_the_child_environment() {
     ]);
     let out = env
         .scope(async {
-            let mut cmd = sh("echo ${ONLY_THIS:-missing}-${HOME:-nohome}");
+            // Git Bash synthesizes HOME when absent; USERPROFILE is inherited
+            // from Windows and therefore tests removal without shell defaults.
+            let script = if cfg!(windows) {
+                "echo ${ONLY_THIS:-missing}-${USERPROFILE:-nohome}"
+            } else {
+                "echo ${ONLY_THIS:-missing}-${HOME:-nohome}"
+            };
+            let mut cmd = sh(script);
             output_unbounded(&mut cmd).await.unwrap()
         })
         .await;

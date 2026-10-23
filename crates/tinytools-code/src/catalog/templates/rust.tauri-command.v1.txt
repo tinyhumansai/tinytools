@@ -1,0 +1,5 @@
+#[tauri::command]
+pub fn {{name}}(input: String) -> Result<String, String> {
+    // @slot body
+    Ok(input)
+}

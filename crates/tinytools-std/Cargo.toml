@@ -10,6 +10,10 @@ documentation = "https://docs.rs/tinytools-std"
 readme = "README.md"
 publish = false
 
+[features]
+# Structural inspection and revision-checked edits are opt-in native tools.
+code = ["dep:tinytools-code", "dep:serde", "dep:tempfile"]
+
 [dependencies]
 anyhow = { workspace = true }
 async-trait = { workspace = true }
@@ -36,9 +40,15 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # Safe effective-credential executable checks for Unix PATH candidates.
 rustix = { version = "1", default-features = false, features = ["fs", "process"] }
 serde_json = { workspace = true }
+# The optional code tools decode strict, typed argument packets.
+serde = { workspace = true, optional = true }
 # `curl` reports the SHA-256 of what it downloaded.
 sha2 = "0.11"
 tinytools = { path = "../tinytools", version = "0.6.0" }
+# Pure syntax analysis and typed chunk rendering; no host policy lives there.
+tinytools-code = { path = "../tinytools-code", version = "0.6.0", optional = true }
+# Same-directory staging and atomic publication for structural edits.
+tempfile = { version = "3", optional = true }
 # `spawn_blocking` keeps synchronous system DNS resolution off async executor threads;
 # `fs`/`process`/`time` serve the filesystem tools.
 tokio = { version = "1", default-features = false, features = ["rt", "sync", "fs", "process", "time", "io-util", "macros"] }

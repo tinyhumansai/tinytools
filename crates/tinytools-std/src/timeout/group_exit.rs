@@ -19,8 +19,8 @@ pub(super) async fn wait(pid: u32) -> std::io::Result<()> {
 
 /// Other platforms retain their existing direct-child acknowledgement.
 #[cfg(not(target_os = "linux"))]
-pub(super) async fn wait(_: u32) -> std::io::Result<()> {
-    Ok(())
+pub(super) fn wait(_: u32) -> std::future::Ready<std::io::Result<()>> {
+    std::future::ready(Ok(()))
 }
 
 /// Inspect kernel process states without reaping the reserved group leader.

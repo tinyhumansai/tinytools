@@ -22,3 +22,5 @@ into the plan.
 See [`example-retry-policy.md`](example-retry-policy.md) for a test-first sample.
 
 Completed plan: [collapsed tools and standard helpers](collapsed-tools-and-standard-helpers.md).
+
+Active: [structural code and boilerplate](structural-code.md).
