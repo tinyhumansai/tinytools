@@ -461,11 +461,7 @@ fn inherit_operator_layers_keeps_only_config_and_named_config_layers() {
         &ctx(),
         Surface::Call
     ));
-    assert!(inherited.visible(
-        &ToolSubject::named("parent_only"),
-        &ctx(),
-        Surface::Call
-    ));
+    assert!(inherited.visible(&ToolSubject::named("parent_only"), &ctx(), Surface::Call));
     assert!(!inherited.visible(
         &ToolSubject::named("workspace_denied"),
         &ctx(),

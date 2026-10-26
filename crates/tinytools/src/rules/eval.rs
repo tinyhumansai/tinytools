@@ -306,9 +306,10 @@ impl ToolRuleSet {
     pub fn inherit_operator_layers(&self) -> Self {
         let mut inherited = Self::new();
         for layer in &self.layers {
-            let is_operator_layer = layer.name.as_deref().is_some_and(|name| {
-                name == "config" || name.starts_with("config:")
-            });
+            let is_operator_layer = layer
+                .name
+                .as_deref()
+                .is_some_and(|name| name == "config" || name.starts_with("config:"));
             if is_operator_layer {
                 inherited.push(layer.clone());
             }
