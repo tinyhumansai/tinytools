@@ -297,6 +297,26 @@ impl ToolRuleSet {
         }
     }
 
+    /// Copies the operator layers (`config` and `config:*`) into a new set.
+    ///
+    /// Sub-agents inherit operator policy but must not inherit their parent's
+    /// agent-specific rules, since those rules may restrict tools the parent
+    /// is delegating to the child.
+    #[must_use]
+    pub fn inherit_operator_layers(&self) -> Self {
+        let mut inherited = Self::new();
+        for layer in &self.layers {
+            let is_operator_layer = layer
+                .name
+                .as_deref()
+                .is_some_and(|name| name == "config" || name.starts_with("config:"));
+            if is_operator_layer {
+                inherited.push(layer.clone());
+            }
+        }
+        inherited
+    }
+
     /// Whether the set admits everything, so a host can skip evaluation.
     #[must_use]
     pub fn is_permissive(&self) -> bool {

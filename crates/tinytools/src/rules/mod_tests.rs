@@ -431,6 +431,45 @@ fn permissive_layers_are_skipped() {
 }
 
 #[test]
+fn inherit_operator_layers_keeps_only_config_and_named_config_layers() {
+    let set = ToolRuleSet::new()
+        .with_layer(layer(json!({
+            "name": "config",
+            "rules": [{ "effect": "deny", "match": { "name": "operator_denied" } }]
+        })))
+        .with_layer(layer(json!({
+            "name": "agent:orchestrator",
+            "rules": [{ "effect": "deny", "match": { "name": "parent_only" } }]
+        })))
+        .with_layer(layer(json!({
+            "name": "config:workspace",
+            "rules": [{ "effect": "deny", "match": { "name": "workspace_denied" } }]
+        })));
+
+    let inherited = set.inherit_operator_layers();
+
+    assert_eq!(
+        inherited
+            .layers
+            .iter()
+            .map(|layer| layer.name.as_deref())
+            .collect::<Vec<_>>(),
+        [Some("config"), Some("config:workspace")]
+    );
+    assert!(!inherited.visible(
+        &ToolSubject::named("operator_denied"),
+        &ctx(),
+        Surface::Call
+    ));
+    assert!(inherited.visible(&ToolSubject::named("parent_only"), &ctx(), Surface::Call));
+    assert!(!inherited.visible(
+        &ToolSubject::named("workspace_denied"),
+        &ctx(),
+        Surface::Call
+    ));
+}
+
+#[test]
 fn layer_approval_takes_the_strictest() {
     let set = ToolRuleSet::new()
         .with_layer(layer(
