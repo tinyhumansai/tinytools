@@ -470,6 +470,33 @@ fn inherit_operator_layers_keeps_only_config_and_named_config_layers() {
 }
 
 #[test]
+fn inherit_operator_layers_keeps_a_default_deny_allowlist() {
+    let set = ToolRuleSet::new().with_layer(layer(json!({
+        "name": "config",
+        "default": "deny",
+        "rules": [{ "effect": "allow", "match": { "name": "file_read" } }]
+    })));
+
+    let inherited = set.inherit_operator_layers();
+
+    assert!(
+        inherited
+            .evaluate(
+                &ToolSubject::named("file_read"),
+                &ctx(),
+                Surface::Call,
+                None
+            )
+            .callable
+    );
+    assert!(
+        !inherited
+            .evaluate(&ToolSubject::named("shell"), &ctx(), Surface::Call, None)
+            .callable
+    );
+}
+
+#[test]
 fn layer_approval_takes_the_strictest() {
     let set = ToolRuleSet::new()
         .with_layer(layer(
