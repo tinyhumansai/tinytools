@@ -108,6 +108,26 @@ pub enum ToolReplay {
     Safe,
 }
 
+/// Whether an identical call returning an identical result is a sign that
+/// the caller is stuck.
+///
+/// A host's loop guards count such repeats: re-running a step whose result is
+/// already in the conversation adds nothing. A wait or a poll is the
+/// exception: it answers the same thing until whatever it waits on moves, so
+/// [`Self::Counted`] is the default and a tool opts into [`Self::Polling`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolRepeat {
+    /// An identical call returning an identical result adds nothing new; a
+    /// loop guard may count it.
+    #[default]
+    Counted,
+    /// The tool waits or polls: an identical call returning an identical
+    /// result is how it is used (a timed wait, a status poll), so loop guards
+    /// leave those repeats uncounted.
+    Polling,
+}
+
 /// Runtime requirements a tool declares for safe execution.
 ///
 /// A host decides how to apply these requirements. In particular, this type
@@ -139,6 +159,13 @@ pub struct ToolRuntime {
     /// re-executed after a crash. See [`ToolReplay`].
     #[serde(default)]
     pub replay: ToolReplay,
+    /// Whether an identical call returning an identical result counts as a
+    /// repeat for a host's loop guards. See [`ToolRepeat`]. Unlike
+    /// [`Self::idempotent`], which says a repeat is *safe*,
+    /// [`ToolRepeat::Polling`] says a repeat that returns nothing new is still
+    /// *expected*.
+    #[serde(default)]
+    pub repeat: ToolRepeat,
 }
 
 /// Access requirements a tool declares before a host exposes or runs it.
@@ -246,6 +273,17 @@ impl ToolPolicy {
     pub fn requiring_approval(mut self) -> Self {
         self.classified = true;
         self.access.approval_required = true;
+        self
+    }
+
+    /// Declares the tool a wait or a poll ([`ToolRepeat::Polling`]).
+    ///
+    /// Unlike the other builders this leaves `classified` as it was: polling
+    /// says how the tool is called, not what it may touch, so it is no safety
+    /// classification.
+    #[must_use]
+    pub fn polling(mut self) -> Self {
+        self.runtime.repeat = ToolRepeat::Polling;
         self
     }
 

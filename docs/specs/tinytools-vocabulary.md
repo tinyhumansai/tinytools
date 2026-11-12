@@ -191,6 +191,23 @@ see "Versioning" — so they shipped as a `0.2.0` → `0.3.0` minor bump.
   that only needs the workspace, thread id, or output cap keeps using the
   typed methods.
 
+## Extension: repeat classification
+
+- **`ToolRuntime::repeat: ToolRepeat`** says whether an identical call
+  returning an identical result is a sign that the caller is stuck.
+  `ToolRepeat::Counted` (the default, and what a payload written before the
+  field existed decodes to) lets a host's loop guards count it. A wait or a
+  poll declares `ToolRepeat::Polling`, since answering the same thing until
+  something moves is its contract (a timed wait, a status poll), so the guards
+  leave those repeats uncounted (TinyAgents' repeat-progress and
+  repeated-failure breakers, through `repeat_call_exemption`).
+  `ToolPolicy::polling()` sets it and, unlike the other builders, leaves
+  `classified` alone: it says how the tool is called, not what it may touch.
+  Like `replay`, it is an enum on the declarative policy surface rather than a
+  new `Tool` method. It is additive on the wire but not source-compatible for
+  an exhaustive `ToolRuntime` literal, so it ships in the next minor release
+  (see "Versioning").
+
 ## Open questions
 
 - Whether `ToolResult`/`ToolContent` should ever adopt an actual MCP

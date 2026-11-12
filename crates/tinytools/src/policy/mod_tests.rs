@@ -3,7 +3,8 @@
 #![allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 
 use super::{
-    ToolAccess, ToolDisplay, ToolPolicy, ToolReplay, ToolRuntime, ToolSideEffects, WorkspaceAccess,
+    ToolAccess, ToolDisplay, ToolPolicy, ToolRepeat, ToolReplay, ToolRuntime, ToolSideEffects,
+    WorkspaceAccess,
 };
 use crate::{SandboxMode, ToolTimeout};
 
@@ -109,6 +110,7 @@ fn policy_round_trips_through_its_stable_json_shape() {
                 "sandbox": "required",
                 "streaming": false,
                 "replay": "never",
+                "repeat": "counted",
             },
             "access": {
                 "workspace": "any",
@@ -144,6 +146,7 @@ fn fully_populated_policy_has_a_pinned_json_wire_shape() {
             max_result_bytes: Some(8_192),
             streaming: true,
             replay: ToolReplay::Safe,
+            repeat: ToolRepeat::Polling,
         },
         access: ToolAccess {
             workspace: WorkspaceAccess::Scoped,
@@ -175,6 +178,7 @@ fn fully_populated_policy_has_a_pinned_json_wire_shape() {
             "max_result_bytes": 8192,
             "streaming": true,
             "replay": "safe",
+            "repeat": "polling",
         },
         "access": {
             "workspace": "scoped",
@@ -225,4 +229,61 @@ fn legacy_runtime_json_without_replay_defaults_to_never() {
     }"#;
     let decoded: ToolRuntime = serde_json::from_str(literal).expect("deserializable");
     assert_eq!(decoded.replay, ToolReplay::Never);
+}
+
+#[test]
+fn repeats_are_counted_unless_a_tool_says_it_polls() {
+    assert_eq!(ToolRuntime::default().repeat, ToolRepeat::Counted);
+    assert_eq!(ToolPolicy::read_only().runtime.repeat, ToolRepeat::Counted);
+}
+
+#[test]
+fn repeat_round_trips_through_json() {
+    let runtime = ToolRuntime {
+        repeat: ToolRepeat::Polling,
+        ..ToolRuntime::default()
+    };
+    let encoded = serde_json::to_string(&runtime).expect("serializable");
+    assert!(encoded.contains("\"repeat\":\"polling\""));
+    let back: ToolRuntime = serde_json::from_str(&encoded).expect("deserializable");
+    assert_eq!(back.repeat, ToolRepeat::Polling);
+}
+
+#[test]
+fn the_polling_builder_marks_the_runtime_and_classifies_nothing() {
+    let polling = ToolPolicy::default().polling();
+    assert_eq!(polling.runtime.repeat, ToolRepeat::Polling);
+    assert!(
+        !polling.classified,
+        "polling says how a tool is called, not what it may touch"
+    );
+
+    let read = ToolPolicy::read_only().polling();
+    assert_eq!(read.runtime.repeat, ToolRepeat::Polling);
+    assert_eq!(
+        ToolPolicy {
+            runtime: ToolRuntime {
+                repeat: ToolRepeat::Counted,
+                ..read.runtime
+            },
+            ..read
+        },
+        ToolPolicy::read_only(),
+        "every other declaration is kept"
+    );
+}
+
+#[test]
+fn legacy_runtime_json_without_repeat_counts_repeats() {
+    // A `ToolRuntime` persisted before `repeat` existed should still decode.
+    let literal = r#"{
+        "timeout": { "mode": "inherit" },
+        "idempotent": true,
+        "cancelable": false,
+        "sandbox": "disabled",
+        "streaming": false,
+        "replay": "safe"
+    }"#;
+    let decoded: ToolRuntime = serde_json::from_str(literal).expect("deserializable");
+    assert_eq!(decoded.repeat, ToolRepeat::Counted);
 }

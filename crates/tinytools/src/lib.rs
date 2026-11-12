@@ -154,7 +154,8 @@ pub use naming::{
 };
 pub use permission::PermissionLevel;
 pub use policy::{
-    ToolAccess, ToolDisplay, ToolPolicy, ToolReplay, ToolRuntime, ToolSideEffects, WorkspaceAccess,
+    ToolAccess, ToolDisplay, ToolPolicy, ToolRepeat, ToolReplay, ToolRuntime, ToolSideEffects,
+    WorkspaceAccess,
 };
 pub use progress::{ProgressSink, ToolProgress};
 pub use rank::{
